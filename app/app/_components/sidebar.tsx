@@ -179,9 +179,9 @@ export function DashboardSidebar({
 	return (
 		<aside
 			className={`
-        m-0 flex w-64 flex-col border-sidebar-border bg-sidebar text-sidebar-foreground
-        h-[100svh] max-h-[100svh]
-        sm:m-4 sm:h-[calc(100svh-2rem)] sm:max-h-[calc(100svh-2rem)]
+        m-0 flex min-h-0 w-64 flex-col border-sidebar-border bg-sidebar text-sidebar-foreground
+        h-[100dvh] max-h-[100dvh]
+        sm:m-4 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]
         fixed inset-y-0 left-0 z-40 shrink-0 overflow-hidden shadow-lg
         rounded-2xl border transition-transform duration-200 ease-out
         md:relative md:z-auto md:translate-x-0
@@ -199,18 +199,20 @@ export function DashboardSidebar({
 					<X className="size-5" />
 				</button>
 			</div>
-			<ClubHeader clubName={clubName} />
-			<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-3">
-				<NavLinks onLinkClick={onClose} />
-			</div>
-			<div className="shrink-0 space-y-3 border-t border-sidebar-border p-3">
-				<ThemeSwitcher />
-				<UserBlock
-					userName={userName}
-					rankStandard={rankStandard}
-					rankLatin={rankLatin}
-					onLinkClick={onClose}
-				/>
+			<div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden flex flex-col">
+				<ClubHeader clubName={clubName} />
+				<div className="flex flex-col gap-2 p-3">
+					<NavLinks onLinkClick={onClose} />
+				</div>
+				<div className="mt-auto space-y-3 border-t border-sidebar-border p-3">
+					<ThemeSwitcher />
+					<UserBlock
+						userName={userName}
+						rankStandard={rankStandard}
+						rankLatin={rankLatin}
+						onLinkClick={onClose}
+					/>
+				</div>
 			</div>
 		</aside>
 	)
@@ -301,7 +303,7 @@ export function DashboardSidebarLayout({
 	}, [mobileOpen])
 
 	return (
-		<div className="flex h-[100svh] max-h-[100svh] w-full gap-0 overflow-hidden">
+		<div className="flex h-[100dvh] max-h-[100dvh] w-full gap-0 overflow-hidden">
 			<DashboardSidebar
 				open={mobileOpen}
 				onClose={() => setMobileOpen(false)}
