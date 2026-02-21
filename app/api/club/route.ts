@@ -1,0 +1,154 @@
+import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+
+export async function GET() {
+	const supabase = await createClient()
+	const {
+		data: { user },
+		error: userError,
+	} = await supabase.auth.getUser()
+
+	if (userError || !user) {
+		return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+	}
+
+	const { data: myProfile } = await supabase
+		.from("profiles")
+		.select("club_id")
+		.eq("id", user.id)
+		.maybeSingle()
+
+	if (!myProfile?.club_id) {
+		return NextResponse.json({ error: "No club" }, { status: 404 })
+	}
+
+	const clubId = myProfile.club_id
+
+	const { data: club, error: clubError } = await supabase
+		.from("clubs")
+		.select("id, name, code")
+		.eq("id", clubId)
+		.single()
+
+	if (clubError || !club) {
+		return NextResponse.json({ error: "Club not found" }, { status: 404 })
+	}
+
+	const { data: members } = await supabase
+		.from("club_members")
+		.select("user_id, role")
+		.eq("club_id", clubId)
+
+	const myMembership = (members ?? []).find((m) => m.user_id === user.id)
+	const isTrainer = myMembership?.role === "trainer"
+
+	const { data: couples } = await supabase
+		.from("couples")
+		.select("id, name, partner1_user_id, partner2_user_id")
+		.eq("club_id", clubId)
+		.order("created_at", { ascending: true })
+
+	const userIds = [...new Set((members ?? []).map((m) => m.user_id))]
+	const { data: profiles } = await supabase
+		.from("profiles")
+		.select("id, full_name, rank_standard, rank_latin, date_of_birth, availability, login_code")
+		.in("id", userIds.length ? userIds : ["00000000-0000-0000-0000-000000000000"])
+
+	function ageFromDateOfBirth(dob: string | null | undefined): number | null {
+		if (!dob || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null
+		const birth = new Date(dob)
+		const today = new Date()
+		let a = today.getFullYear() - birth.getFullYear()
+		const m = today.getMonth() - birth.getMonth()
+		if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--
+		return a >= 0 && a <= 150 ? a : null
+	}
+
+	type AvailabilitySlot = { day: string; start: string; end: string }
+	const profileByUserId = new Map(
+		(profiles ?? []).map((p) => [
+			p.id,
+			{
+				full_name: p.full_name ?? "—",
+				rank_standard: p.rank_standard ?? null,
+				rank_latin: p.rank_latin ?? null,
+				date_of_birth: p.date_of_birth ?? null,
+				availability: (Array.isArray(p.availability) ? p.availability : []) as AvailabilitySlot[],
+				login_code: p.login_code ?? null,
+			},
+		])
+	)
+	const nameByUserId = new Map((profiles ?? []).map((p) => [p.id, p.full_name ?? "—"]))
+
+	const pairedUserIds = new Set<string>()
+	for (const c of couples ?? []) {
+		if (c.partner1_user_id) pairedUserIds.add(c.partner1_user_id)
+		if (c.partner2_user_id) pairedUserIds.add(c.partner2_user_id)
+	}
+
+	const students = (members ?? []).filter((m) => m.role === "student")
+	const trainers = (members ?? []).filter((m) => m.role === "trainer")
+	// Map: user_id -> partner's full_name (from couples)
+	const partnerNameByUserId = new Map<string, string>()
+	for (const c of couples ?? []) {
+		if (c.partner1_user_id && c.partner2_user_id) {
+			partnerNameByUserId.set(c.partner1_user_id, nameByUserId.get(c.partner2_user_id) ?? "—")
+			partnerNameByUserId.set(c.partner2_user_id, nameByUserId.get(c.partner1_user_id) ?? "—")
+		}
+	}
+
+	const allStudents = students.map((m) => {
+		const p = profileByUserId.get(m.user_id)
+		const dob = p?.date_of_birth ?? null
+		return {
+			user_id: m.user_id,
+			full_name: p?.full_name ?? "—",
+			rank_standard: p?.rank_standard ?? null,
+			rank_latin: p?.rank_latin ?? null,
+			age: dob ? ageFromDateOfBirth(dob) : null,
+			partner_name: partnerNameByUserId.get(m.user_id) ?? null,
+			availability: (p?.availability ?? []) as AvailabilitySlot[],
+		}
+	})
+
+	const unpairedStudents = allStudents.filter((s) => !pairedUserIds.has(s.user_id))
+
+	const allTrainers = trainers.map((m) => {
+		const p = profileByUserId.get(m.user_id)
+		const dob = p?.date_of_birth ?? null
+		const loginCode = p?.login_code ?? null
+		return {
+			user_id: m.user_id,
+			full_name: p?.full_name ?? "—",
+			rank_standard: p?.rank_standard ?? null,
+			rank_latin: p?.rank_latin ?? null,
+			age: dob ? ageFromDateOfBirth(dob) : null,
+			is_external: !!loginCode,
+			login_code: loginCode ?? undefined,
+		}
+	})
+
+	const couplesWithNames = (couples ?? []).map((c) => {
+		const p1 = c.partner1_user_id ? profileByUserId.get(c.partner1_user_id) : null
+		const p2 = c.partner2_user_id ? profileByUserId.get(c.partner2_user_id) : null
+		return {
+			id: c.id,
+			name: c.name ?? null,
+			partner1_user_id: c.partner1_user_id ?? null,
+			partner2_user_id: c.partner2_user_id ?? null,
+			partner1_name: c.partner1_user_id ? nameByUserId.get(c.partner1_user_id) ?? null : null,
+			partner2_name: c.partner2_user_id ? nameByUserId.get(c.partner2_user_id) ?? null : null,
+			partner1_availability: (p1?.availability ?? []) as AvailabilitySlot[],
+			partner2_availability: (p2?.availability ?? []) as AvailabilitySlot[],
+		}
+	})
+
+	return NextResponse.json({
+		club: { id: club.id, name: club.name, code: club.code },
+		isTrainer: !!isTrainer,
+		couples: couplesWithNames,
+		allStudents,
+		allTrainers,
+		unpairedStudents,
+	})
+}
