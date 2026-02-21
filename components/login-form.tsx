@@ -23,6 +23,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Loader2, GraduationCap, User } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 
 type LoginMode = "member" | "external"
 
@@ -54,6 +55,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 			})
 			const data = await response.json().catch(() => ({}))
 			if (!response.ok) {
+				if (response.status === 429) {
+					toast.error(typeof data?.error === "string" ? data.error : "Too many attempts. Try again in a minute.")
+				}
 				throw new Error(typeof data?.error === "string" ? data.error : "Login failed")
 			}
 			router.replace("/onboarding")
@@ -200,12 +204,12 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 								<Field>
 									<div className="flex items-center">
 										<FieldLabel htmlFor="password">Password</FieldLabel>
-										<a
-											href="#"
+										<Link
+											href="/auth/forgot-password"
 											className="ml-auto text-sm underline-offset-4 hover:underline"
 										>
 											Forgot your password?
-										</a>
+										</Link>
 									</div>
 									<Input
 										id="password"

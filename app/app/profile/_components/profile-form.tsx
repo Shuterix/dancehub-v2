@@ -4,6 +4,7 @@ import { Loader2, User as UserIcon, Phone, Award, Calendar, Users, Clock, Calend
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -82,6 +83,7 @@ export function ProfileForm() {
 			const res = await fetch("/api/auth/me")
 			if (!res.ok) {
 				if (res.status === 401) {
+					toast.error("Session expired. Please sign in again.")
 					router.replace("/auth/login")
 					return
 				}
@@ -178,6 +180,7 @@ export function ProfileForm() {
 			if (!res.ok) throw new Error(json.error ?? "Failed to save")
 			setSuccess(true)
 			isDirtyRef.current = false
+			toast.success("Profile saved.")
 			router.refresh()
 		} catch (err) {
 			setApiError(err instanceof Error ? err.message : "Something went wrong.")

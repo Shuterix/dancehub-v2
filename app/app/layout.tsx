@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { ErrorBoundary } from "@/components/error-boundary"
 import { DashboardSidebarLayout } from "./_components/sidebar"
 
 export default async function AppLayout({
@@ -27,5 +28,9 @@ export default async function AppLayout({
 		redirect("/onboarding")
 	}
 
-	return <DashboardSidebarLayout>{children}</DashboardSidebarLayout>
+	return (
+		<ErrorBoundary>
+			<DashboardSidebarLayout>{children}</DashboardSidebarLayout>
+		</ErrorBoundary>
+	)
 }

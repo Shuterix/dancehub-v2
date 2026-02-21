@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Loader2, Clock, Plus, Trash2, Sun, SunDim, Moon, ChevronLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -60,6 +61,7 @@ export default function AvailabilityPage() {
 		Promise.all([
 			fetch("/api/profile").then(async (res) => {
 				if (res.status === 401) {
+					toast.error("Session expired. Please sign in again.")
 					router.replace("/auth/login")
 					return null
 				}

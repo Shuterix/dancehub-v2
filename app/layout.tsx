@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner"
+import { ErrorBoundary } from "@/components/error-boundary"
 import "./_theme/globals.css"
 
 const THEME_SCRIPT = `
@@ -21,7 +22,9 @@ export default function RootLayout({
 				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 			</head>
 			<body className="min-h-svh bg-background text-foreground">
-				{children}
+				<ErrorBoundary>
+					{children}
+				</ErrorBoundary>
 				<Toaster />
 			</body>
 		</html>

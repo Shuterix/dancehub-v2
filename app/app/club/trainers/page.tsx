@@ -86,6 +86,7 @@ export default function ClubTrainersPage() {
 		return fetch("/api/club")
 			.then((res) => {
 				if (res.status === 401) {
+					toast.error("Session expired. Please sign in again.")
 					router.push("/auth/login")
 					return null
 				}

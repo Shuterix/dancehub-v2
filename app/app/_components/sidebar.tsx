@@ -3,8 +3,9 @@
 import { LayoutDashboard, User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -47,7 +48,7 @@ function NavLinks({ onLinkClick }: { onLinkClick?: () => void }) {
 						key={item.title}
 						href={item.url}
 						onClick={onLinkClick}
-						className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+						className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
 							isActive
 								? "bg-sidebar-accent text-sidebar-accent-foreground"
 								: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -104,7 +105,7 @@ function UserBlock({
 				<Link
 					href="/app/profile"
 					onClick={onLinkClick}
-					className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
 						pathname === "/app/profile"
 							? "bg-sidebar-accent text-sidebar-accent-foreground"
 							: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -116,7 +117,7 @@ function UserBlock({
 				<Link
 					href="/app/availability"
 					onClick={onLinkClick}
-					className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
 						pathname === "/app/availability"
 							? "bg-sidebar-accent text-sidebar-accent-foreground"
 							: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -130,7 +131,7 @@ function UserBlock({
 				<button
 					type="button"
 					onClick={handleSignOut}
-					className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+					className="flex min-h-[44px] w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 				>
 					<LogOut className="size-4 shrink-0" />
 					Sign out
@@ -147,6 +148,7 @@ export function DashboardSidebar({
 	open?: boolean
 	onClose?: () => void
 }) {
+	const router = useRouter()
 	const [clubName, setClubName] = useState<string | null>(null)
 	const [userName, setUserName] = useState<string | null>(null)
 	const [rankStandard, setRankStandard] = useState<string | null>(null)
@@ -154,7 +156,14 @@ export function DashboardSidebar({
 
 	useEffect(() => {
 		fetch("/api/auth/me")
-			.then((res) => (res.ok ? res.json() : null))
+			.then((res) => {
+				if (res.status === 401) {
+					toast.error("Session expired. Please sign in again.")
+					router.push("/auth/login")
+					return null
+				}
+				return res.ok ? res.json() : null
+			})
 			.then((data: {
 				user?: { user_metadata?: { full_name?: string }; email?: string }
 				profile?: { rank_standard?: string; rank_latin?: string }
@@ -186,7 +195,7 @@ export function DashboardSidebar({
 					type="button"
 					onClick={onClose}
 					aria-label="Close menu"
-					className="cursor-pointer rounded-xl p-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+					className="flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-xl text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 				>
 					<X className="size-5" />
 				</button>
@@ -260,7 +269,7 @@ export function DashboardSidebarTrigger({ onOpen }: { onOpen: () => void }) {
 			type="button"
 			onClick={onOpen}
 			aria-label="Open menu"
-			className="cursor-pointer rounded-xl p-2 text-foreground transition-colors hover:bg-muted md:hidden"
+			className="flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-xl p-2 text-foreground transition-colors hover:bg-muted md:hidden"
 		>
 			<Menu className="size-5" />
 		</button>
@@ -272,7 +281,17 @@ export function DashboardSidebarLayout({
 }: {
 	children: React.ReactNode
 }) {
+	const pathname = usePathname()
 	const [mobileOpen, setMobileOpen] = useState(false)
+	const prevPathnameRef = useRef(pathname)
+
+	// Close mobile sidebar when route changes (e.g. after tapping a nav link), not on initial mount
+	useEffect(() => {
+		if (prevPathnameRef.current !== pathname) {
+			prevPathnameRef.current = pathname
+			setMobileOpen(false)
+		}
+	}, [pathname])
 
 	useEffect(() => {
 		if (mobileOpen) {

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { checkAuthRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
+	if (!checkAuthRateLimit(request)) {
+		return NextResponse.json(
+			{ error: "Too many attempts. Please try again in a minute." },
+			{ status: 429 }
+		)
+	}
 	try {
 		const body = await request.json()
 		const { email, password, name } = body as { email?: string; password?: string; name?: string }

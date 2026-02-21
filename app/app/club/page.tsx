@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Copy, Users, UserPlus, GraduationCap, Heart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,6 +34,7 @@ export default function ClubPage() {
 		fetch("/api/club")
 			.then((res) => {
 				if (res.status === 401) {
+					toast.error("Session expired. Please sign in again.")
 					router.push("/auth/login")
 					return null
 				}
