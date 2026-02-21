@@ -1,12 +1,19 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, UserPlus, Loader2, ChevronLeft, MoreVertical } from "lucide-react"
+import { Users, Loader2, ChevronLeft, MoreVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select"
 import {
 	Sheet,
 	SheetContent,
@@ -19,6 +26,11 @@ const STUDENTS_GRID = "grid grid-cols-[1fr_7rem_7rem_7rem_1fr] gap-3 items-cente
 
 const RANKS = ["E", "D", "C", "B", "A", "S"] as const
 type Rank = (typeof RANKS)[number]
+
+const RANK_OPTIONS: { value: string; label: string }[] = [
+	{ value: "__none__", label: "–" },
+	...RANKS.map((r) => ({ value: r, label: r })),
+]
 
 const RANK_STYLES: Record<Rank, string> = {
 	E: "bg-red-500/30 text-red-700 dark:text-red-300 border-red-500/50",
@@ -39,6 +51,47 @@ function RankBadge({ rank }: { rank: Rank }) {
 		>
 			{rank}
 		</span>
+	)
+}
+
+function RankSelect({
+	value,
+	onChange,
+	disabled,
+	className,
+	"aria-label": ariaLabel,
+}: {
+	value: string | null
+	onChange: (value: string | null) => void
+	disabled?: boolean
+	className?: string
+	"aria-label"?: string
+}) {
+	const displayValue = value ?? "__none__"
+	return (
+		<Select
+			value={displayValue}
+			onValueChange={(v) => onChange(v === "__none__" ? null : v)}
+			disabled={disabled}
+		>
+			<SelectTrigger
+				aria-label={ariaLabel}
+				className={cn(
+					"h-9 w-full min-w-[4.5rem] border-border bg-muted/50 font-semibold",
+					value && RANK_STYLES[value as Rank],
+					className
+				)}
+			>
+				<SelectValue placeholder="–" />
+			</SelectTrigger>
+			<SelectContent>
+				{RANK_OPTIONS.map((opt) => (
+					<SelectItem key={opt.value} value={opt.value}>
+						{opt.label}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
 	)
 }
 
@@ -63,8 +116,9 @@ export default function ClubStudentsPage() {
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
 	const [detailStudent, setDetailStudent] = useState<Student | null>(null)
+	const [savingUserId, setSavingUserId] = useState<string | null>(null)
 
-	useEffect(() => {
+	const loadData = useCallback(() => {
 		fetch("/api/club")
 			.then((res) => {
 				if (res.status === 401) {
@@ -80,11 +134,64 @@ export default function ClubStudentsPage() {
 				return res.json()
 			})
 			.then((json) => {
-				if (json) setData(json)
+				if (json) {
+					setData(json)
+					if (detailStudent && json.allStudents) {
+						const updated = json.allStudents.find((s: Student) => s.user_id === detailStudent.user_id)
+						if (updated) setDetailStudent(updated)
+					}
+				}
 			})
 			.catch((e) => setError(e instanceof Error ? e.message : "Something went wrong"))
-			.finally(() => setLoading(false))
+	}, [router, detailStudent?.user_id])
+
+	useEffect(() => {
+		let cancelled = false
+		setLoading(true)
+		fetch("/api/club")
+			.then((res) => {
+				if (res.status === 401) {
+					toast.error("Session expired. Please sign in again.")
+					router.push("/auth/login")
+					return null
+				}
+				if (res.status === 404) {
+					setError("You are not in a club.")
+					return null
+				}
+				if (!res.ok) throw new Error("Failed to load club")
+				return res.json()
+			})
+			.then((json) => {
+				if (!cancelled && json) setData(json)
+			})
+			.catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Something went wrong") })
+			.finally(() => { if (!cancelled) setLoading(false) })
+		return () => { cancelled = true }
 	}, [router])
+
+	async function updateRank(
+		userId: string,
+		updates: { rank_standard?: string | null; rank_latin?: string | null }
+	) {
+		setSavingUserId(userId)
+		try {
+			const res = await fetch("/api/club/member-rank", {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ user_id: userId, ...updates }),
+			})
+			const json = await res.json().catch(() => ({}))
+			if (!res.ok) {
+				toast.error(json.error ?? "Failed to update rank")
+				return
+			}
+			toast.success("Rank updated")
+			loadData()
+		} finally {
+			setSavingUserId(null)
+		}
+	}
 
 	if (loading) {
 		return (
@@ -120,7 +227,7 @@ export default function ClubStudentsPage() {
 		)
 	}
 
-	const { allStudents } = data
+	const { allStudents, isTrainer } = data
 
 	return (
 		<div className="space-y-6">
@@ -138,7 +245,7 @@ export default function ClubStudentsPage() {
 						</span>
 					</h1>
 					<p className="text-muted-foreground text-sm">
-						All students in the club. Shows whether each has a dance partner.
+						All students in the club. {isTrainer && "Use the dropdowns to set Standard (STT) and Latin (LAT) rank per student."} Shows whether each has a dance partner.
 					</p>
 				</div>
 			</div>
@@ -207,21 +314,31 @@ export default function ClubStudentsPage() {
 											{s.age != null ? `${s.age} ${s.age === 1 ? "year" : "years"} old` : "–"}
 										</div>
 										<div className="flex items-center gap-1.5">
-											{s.rank_standard != null ? (
-												<>
-													<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">STT</span>
-													<RankBadge rank={s.rank_standard as Rank} />
-												</>
+											<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">STT</span>
+											{isTrainer ? (
+												<RankSelect
+													value={s.rank_standard}
+													onChange={(v) => updateRank(s.user_id, { rank_standard: v })}
+													disabled={savingUserId === s.user_id}
+													aria-label={`Standard rank for ${s.full_name}`}
+												/>
+											) : s.rank_standard != null ? (
+												<RankBadge rank={s.rank_standard as Rank} />
 											) : (
 												<span className="text-muted-foreground text-sm">–</span>
 											)}
 										</div>
 										<div className="flex items-center gap-1.5">
-											{s.rank_latin != null ? (
-												<>
-													<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">LAT</span>
-													<RankBadge rank={s.rank_latin as Rank} />
-												</>
+											<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">LAT</span>
+											{isTrainer ? (
+												<RankSelect
+													value={s.rank_latin}
+													onChange={(v) => updateRank(s.user_id, { rank_latin: v })}
+													disabled={savingUserId === s.user_id}
+													aria-label={`Latin rank for ${s.full_name}`}
+												/>
+											) : s.rank_latin != null ? (
+												<RankBadge rank={s.rank_latin as Rank} />
 											) : (
 												<span className="text-muted-foreground text-sm">–</span>
 											)}
@@ -253,7 +370,18 @@ export default function ClubStudentsPage() {
 											<div>
 												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Standard (STT)</p>
 												<div className="mt-1.5">
-													{detailStudent.rank_standard != null ? (
+													{isTrainer ? (
+														<RankSelect
+															value={detailStudent.rank_standard}
+															onChange={(v) => {
+																updateRank(detailStudent.user_id, { rank_standard: v })
+																setDetailStudent((prev) => prev ? { ...prev, rank_standard: v } : null)
+															}}
+															disabled={savingUserId === detailStudent.user_id}
+															className="max-w-[6rem]"
+															aria-label="Standard rank"
+														/>
+													) : detailStudent.rank_standard != null ? (
 														<RankBadge rank={detailStudent.rank_standard as Rank} />
 													) : (
 														<span className="text-muted-foreground text-sm">–</span>
@@ -263,7 +391,18 @@ export default function ClubStudentsPage() {
 											<div>
 												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Latin (LAT)</p>
 												<div className="mt-1.5">
-													{detailStudent.rank_latin != null ? (
+													{isTrainer ? (
+														<RankSelect
+															value={detailStudent.rank_latin}
+															onChange={(v) => {
+																updateRank(detailStudent.user_id, { rank_latin: v })
+																setDetailStudent((prev) => prev ? { ...prev, rank_latin: v } : null)
+															}}
+															disabled={savingUserId === detailStudent.user_id}
+															className="max-w-[6rem]"
+															aria-label="Latin rank"
+														/>
+													) : detailStudent.rank_latin != null ? (
 														<RankBadge rank={detailStudent.rank_latin as Rank} />
 													) : (
 														<span className="text-muted-foreground text-sm">–</span>

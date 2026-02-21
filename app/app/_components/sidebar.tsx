@@ -48,11 +48,10 @@ function NavLinks({ onLinkClick }: { onLinkClick?: () => void }) {
 						key={item.title}
 						href={item.url}
 						onClick={onLinkClick}
-						className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-							isActive
+						className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${isActive
 								? "bg-sidebar-accent text-sidebar-accent-foreground"
 								: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-						}`}
+							}`}
 					>
 						<item.icon className="size-4 shrink-0" />
 						<span>{item.title}</span>
@@ -105,11 +104,10 @@ function UserBlock({
 				<Link
 					href="/app/profile"
 					onClick={onLinkClick}
-					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-						pathname === "/app/profile"
+					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${pathname === "/app/profile"
 							? "bg-sidebar-accent text-sidebar-accent-foreground"
 							: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-					}`}
+						}`}
 				>
 					<User className="size-4 shrink-0" />
 					Profile
@@ -117,11 +115,10 @@ function UserBlock({
 				<Link
 					href="/app/availability"
 					onClick={onLinkClick}
-					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-						pathname === "/app/availability"
+					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${pathname === "/app/availability"
 							? "bg-sidebar-accent text-sidebar-accent-foreground"
 							: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-					}`}
+						}`}
 				>
 					<Clock className="size-4 shrink-0" />
 					Availability
