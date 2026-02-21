@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
 export type AvailabilitySlot = { day: string; start: string; end: string }
@@ -203,8 +204,44 @@ export function ProfileForm() {
 
 	if (loading) {
 		return (
-			<div className="flex min-h-[40vh] items-center justify-center">
-				<Loader2 className="size-8 animate-spin text-muted-foreground" aria-hidden />
+			<div className="space-y-6">
+				<div className="space-y-2">
+					<Skeleton className="h-8 w-32" />
+					<Skeleton className="h-4 w-64" />
+				</div>
+				<Card>
+					<CardHeader className="space-y-2">
+						<Skeleton className="h-5 w-24" />
+						<Skeleton className="h-4 w-full max-w-sm" />
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="space-y-2">
+							<Skeleton className="h-4 w-16" />
+							<Skeleton className="h-10 w-full" />
+						</div>
+						<div className="space-y-2">
+							<Skeleton className="h-4 w-14" />
+							<Skeleton className="h-10 w-full" />
+						</div>
+						<div className="space-y-2">
+							<Skeleton className="h-4 w-20" />
+							<Skeleton className="h-10 w-full" />
+						</div>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="space-y-2">
+						<Skeleton className="h-5 w-28" />
+						<Skeleton className="h-4 w-full max-w-xs" />
+					</CardHeader>
+					<CardContent>
+						<div className="flex gap-2">
+							<Skeleton className="h-9 w-9 rounded-xl" />
+							<Skeleton className="h-9 w-9 rounded-xl" />
+							<Skeleton className="h-9 w-9 rounded-xl" />
+						</div>
+					</CardContent>
+				</Card>
 			</div>
 		)
 	}

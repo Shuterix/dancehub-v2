@@ -17,6 +17,7 @@ In the Vercel project: **Settings → Environment Variables**. Add:
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | From Supabase Dashboard → Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase **anon** / public key | Same place; safe to expose in the browser |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service_role** key | Same place; **never** expose to the client. Used for register + external-teacher sign-in. |
+| `NEXT_PUBLIC_CLARITY_PROJECT_ID` | (Optional) Microsoft Clarity project ID | For session recordings and heatmaps. Get it at [clarity.microsoft.com](https://clarity.microsoft.com). If unset, Clarity is not loaded. |
 
 Add them for **Production** (and optionally Preview if you want). Redeploy after changing env vars.
 

@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { MSClarity } from "@/components/ms-clarity"
 import "./_theme/globals.css"
 
 const THEME_SCRIPT = `
@@ -21,11 +22,12 @@ export default function RootLayout({
 			<head>
 				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 			</head>
-			<body className="min-h-svh bg-background text-foreground">
+			<body className="min-h-svh overflow-x-hidden bg-background text-foreground">
 				<ErrorBoundary>
 					{children}
 				</ErrorBoundary>
 				<Toaster />
+				<MSClarity />
 			</body>
 		</html>
 	)

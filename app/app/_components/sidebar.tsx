@@ -244,8 +244,8 @@ function DashboardBreadcrumbs() {
 	if (items.length === 0) return null
 
 	return (
-		<Breadcrumb>
-			<BreadcrumbList>
+		<Breadcrumb className="min-w-0 overflow-hidden">
+			<BreadcrumbList className="flex-wrap">
 				{items.map((item, i) => (
 					<Fragment key={item.href}>
 						{i > 0 && <BreadcrumbSeparator />}
@@ -318,11 +318,13 @@ export function DashboardSidebarLayout({
 				/>
 			)}
 			<div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden sm:mr-4">
-				<header className="flex h-14 shrink-0 items-center gap-2 border-border bg-background px-4 md:px-6 sm:my-4 sm:rounded-xl">
-					<DashboardSidebarTrigger onOpen={() => setMobileOpen(true)} />
+				<header className="flex shrink-0 flex-col gap-2 border-border bg-background px-4 py-3 md:px-6 sm:my-4 sm:rounded-xl md:min-h-14 md:flex-row md:items-center">
+					<div className="flex h-10 items-center md:h-auto">
+						<DashboardSidebarTrigger onOpen={() => setMobileOpen(true)} />
+					</div>
 					<DashboardBreadcrumbs />
 				</header>
-				<main className="min-h-0 flex-1 overflow-auto rounded-t-xl m-4">{children}</main>
+				<main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-t-xl m-4">{children}</main>
 			</div>
 		</div>
 	)
