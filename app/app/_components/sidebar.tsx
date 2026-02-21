@@ -182,7 +182,9 @@ export function DashboardSidebar({
 	return (
 		<aside
 			className={`
-        m-0 flex h-screen max-h-screen w-64 flex-col sm:m-4 sm:h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-2rem)] border-sidebar-border bg-sidebar text-sidebar-foreground
+        m-0 flex w-64 flex-col border-sidebar-border bg-sidebar text-sidebar-foreground
+        h-[100svh] max-h-[100svh]
+        sm:m-4 sm:h-[calc(100svh-2rem)] sm:max-h-[calc(100svh-2rem)]
         fixed inset-y-0 left-0 z-40 shrink-0 overflow-hidden shadow-lg
         rounded-2xl border transition-transform duration-200 ease-out
         md:relative md:z-auto md:translate-x-0
@@ -302,7 +304,7 @@ export function DashboardSidebarLayout({
 	}, [mobileOpen])
 
 	return (
-		<div className="flex h-screen max-h-screen w-full gap-0 overflow-hidden">
+		<div className="flex h-[100svh] max-h-[100svh] w-full gap-0 overflow-hidden">
 			<DashboardSidebar
 				open={mobileOpen}
 				onClose={() => setMobileOpen(false)}
