@@ -36,6 +36,7 @@ type LessonItem = {
 	trainer_name: string | null
 	label: string
 	is_static: boolean
+	cancelled_at?: string | null
 }
 
 /** Theme-friendly trainer colors (border + subtle bg) for lesson cards */
@@ -1109,11 +1110,17 @@ function LessonDetailDialog({
 			return lesson.start_at.slice(0, 10)
 		}
 	})()
+	const isCancelled = !!lesson.cancelled_at
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-h-[90vh] overflow-y-auto w-[calc(100vw-2rem)] max-w-lg">
 				<DialogHeader>
-					<DialogTitle className="text-xl">{lesson.label}</DialogTitle>
+					<div className="flex items-center gap-2 flex-wrap">
+						<DialogTitle className="text-xl">{lesson.label}</DialogTitle>
+						{isCancelled && (
+							<Badge variant="secondary" className="font-normal">Canceled</Badge>
+						)}
+					</div>
 					<DialogDescription>Lesson details</DialogDescription>
 				</DialogHeader>
 				<dl className="grid gap-4 text-sm">
@@ -1217,22 +1224,29 @@ function LessonGrid({
 							{label} {date.slice(8)}
 						</h3>
 						<ul className="space-y-1 mt-1">
-							{dayLessons.map((l) => (
-								<li
-									key={l.id}
-									role="button"
-									tabIndex={0}
-									onClick={() => onLessonClick(l)}
-									onKeyDown={(e) => e.key === "Enter" && onLessonClick(l)}
-									className={cn(
-										"flex items-center gap-2 rounded-lg py-3 px-3 min-h-[44px] cursor-pointer active:opacity-90 border-l-4",
-										TRAINER_COLORS[getTrainerColorIndex(l.trainer_id, trainerOrder)]
-									)}
-								>
-									<span className="text-muted-foreground text-sm shrink-0 w-14">{formatTimeRange(l.start_at, l.end_at)}</span>
-									<span className="font-medium truncate">{l.label}</span>
-								</li>
-							))}
+							{dayLessons.map((l) => {
+								const isCancelled = !!l.cancelled_at
+								return (
+									<li
+										key={l.id}
+										role="button"
+										tabIndex={0}
+										onClick={() => onLessonClick(l)}
+										onKeyDown={(e) => e.key === "Enter" && onLessonClick(l)}
+										className={cn(
+											"flex items-center gap-2 rounded-lg py-3 px-3 min-h-[44px] cursor-pointer active:opacity-90 border-l-4",
+											TRAINER_COLORS[getTrainerColorIndex(l.trainer_id, trainerOrder)],
+											isCancelled && "opacity-70"
+										)}
+									>
+										<span className="text-muted-foreground text-sm shrink-0 w-14">{formatTimeRange(l.start_at, l.end_at)}</span>
+										<span className="font-medium truncate">{l.label}</span>
+										{isCancelled && (
+											<span className="shrink-0 text-xs text-muted-foreground font-normal">Canceled</span>
+										)}
+									</li>
+								)
+							})}
 						</ul>
 					</section>
 				))}
@@ -1263,22 +1277,27 @@ function LessonGrid({
 												<span className="text-muted-foreground">—</span>
 											) : (
 												<ul className="space-y-1">
-													{cellLessons.map((l) => (
-														<li
-															key={l.id}
-															role="button"
-															tabIndex={0}
-															onClick={() => onLessonClick(l)}
-															onKeyDown={(e) => e.key === "Enter" && onLessonClick(l)}
-															className={cn(
-																"cursor-pointer rounded px-2 py-1 text-xs font-medium truncate max-w-[120px] transition-opacity hover:opacity-90 border-l-2",
-																TRAINER_COLORS[getTrainerColorIndex(l.trainer_id, trainerOrder)]
-															)}
-															title="Tap for details"
-														>
-															{l.label}
-														</li>
-													))}
+													{cellLessons.map((l) => {
+														const isCancelled = !!l.cancelled_at
+														return (
+															<li
+																key={l.id}
+																role="button"
+																tabIndex={0}
+																onClick={() => onLessonClick(l)}
+																onKeyDown={(e) => e.key === "Enter" && onLessonClick(l)}
+																className={cn(
+																	"cursor-pointer rounded px-2 py-1 text-xs font-medium truncate max-w-[120px] transition-opacity hover:opacity-90 border-l-2",
+																	TRAINER_COLORS[getTrainerColorIndex(l.trainer_id, trainerOrder)],
+																	isCancelled && "opacity-70"
+																)}
+																title={isCancelled ? "Canceled" : "Tap for details"}
+															>
+																{l.label}
+																{isCancelled && " (Canceled)"}
+															</li>
+														)
+													})}
 												</ul>
 											)}
 										</td>

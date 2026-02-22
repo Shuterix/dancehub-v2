@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Loader2, Calendar, XCircle } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -27,6 +28,8 @@ type LessonItem = {
 	trainer_name: string | null
 	label: string
 	is_trainer: boolean
+	cancelled_at?: string | null
+	cancellation_note?: string | null
 }
 
 function formatDate(d: string): string {
@@ -128,41 +131,60 @@ export default function MyLessonsPage() {
 				</Card>
 			) : (
 				<ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-					{lessons.map((lesson) => (
-						<Card key={lesson.id}>
-							<CardHeader className="pb-2">
-								<div className="flex items-start justify-between gap-2">
-									<div>
-										<CardTitle className="text-base">{lesson.label}</CardTitle>
-										<CardDescription className="mt-1">
-											{formatDate(lesson.start_at)} · {formatTimeRange(lesson.start_at, lesson.end_at)}
-										</CardDescription>
+					{lessons.map((lesson) => {
+						const isCancelled = !!lesson.cancelled_at
+						return (
+							<Card
+								key={lesson.id}
+								className={isCancelled ? "opacity-75 pointer-events-none" : undefined}
+								aria-disabled={isCancelled}
+							>
+								<CardHeader className="pb-2">
+									<div className="flex items-start justify-between gap-2">
+										<div>
+											<div className="flex items-center gap-2 flex-wrap">
+												<CardTitle className="text-base">{lesson.label}</CardTitle>
+												{isCancelled && (
+													<Badge variant="secondary" className="shrink-0 font-normal">
+														Canceled
+													</Badge>
+												)}
+											</div>
+											<CardDescription className="mt-1">
+												{formatDate(lesson.start_at)} · {formatTimeRange(lesson.start_at, lesson.end_at)}
+											</CardDescription>
+										</div>
+										{!isCancelled && (
+											<Button
+												variant="ghost"
+												size="icon"
+												className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+												aria-label="Cancel lesson"
+												onClick={() => {
+													setCancelLesson(lesson)
+													setCancelNote("")
+												}}
+											>
+												<XCircle className="size-4" />
+											</Button>
+										)}
 									</div>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-										aria-label="Cancel lesson"
-										onClick={() => {
-											setCancelLesson(lesson)
-											setCancelNote("")
-										}}
-									>
-										<XCircle className="size-4" />
-									</Button>
-								</div>
-							</CardHeader>
-							<CardContent className="pt-0 text-sm text-muted-foreground">
-								{lesson.trainer_name && (
-									<p>
-										{lesson.is_trainer ? "You (trainer)" : `Trainer: ${lesson.trainer_name}`}
-									</p>
-								)}
-								{lesson.room_name && <p>Room: {lesson.room_name}</p>}
-								<p className="capitalize">{lesson.lesson_type}</p>
-							</CardContent>
-						</Card>
-					))}
+								</CardHeader>
+								<CardContent className="pt-0 text-sm text-muted-foreground">
+									{lesson.trainer_name && (
+										<p>
+											{lesson.is_trainer ? "You (trainer)" : `Trainer: ${lesson.trainer_name}`}
+										</p>
+									)}
+									{lesson.room_name && <p>Room: {lesson.room_name}</p>}
+									<p className="capitalize">{lesson.lesson_type}</p>
+									{isCancelled && lesson.cancellation_note && (
+										<p className="mt-1 text-muted-foreground/90 italic">Reason: {lesson.cancellation_note}</p>
+									)}
+								</CardContent>
+							</Card>
+						)
+					})}
 				</ul>
 			)}
 

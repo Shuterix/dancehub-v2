@@ -39,13 +39,14 @@ export async function GET(
 
 	const { data: timetable, error: tError } = await supabase
 		.from("timetables")
-		.select("id")
+		.select("id, recurrence")
 		.eq("id", timetableId)
 		.eq("club_id", clubId)
 		.single()
 	if (tError || !timetable) {
 		return NextResponse.json({ error: "Timetable not found" }, { status: 404 })
 	}
+	const recurrence = (timetable as { recurrence?: string }).recurrence ?? ""
 
 	const { searchParams } = new URL(request.url)
 	const weekStart = searchParams.get("week_start")
@@ -56,13 +57,18 @@ export async function GET(
 	weekEnd.setDate(weekEnd.getDate() + 6)
 	const weekEndStr = weekEnd.toISOString().slice(0, 10) + "T23:59:59.999"
 
-	const { data: lessons, error: lError } = await supabase
+	const { data: lessonsRaw, error: lError } = await supabase
 		.from("lessons")
-		.select("id, lesson_type, start_at, end_at, room_id, trainer_id, student_id, couple_id, group_id, group_lesson_type_id, is_static")
+		.select("id, lesson_type, start_at, end_at, room_id, trainer_id, student_id, couple_id, group_id, group_lesson_type_id, is_static, cancelled_at")
 		.eq("timetable_id", timetableId)
 		.gte("start_at", monday + "T00:00:00")
 		.lte("start_at", weekEndStr)
 		.order("start_at")
+	const lessons = (lessonsRaw ?? []).filter((l) => {
+		// Only affect timetable for static + not recurring: hide cancelled static fixed_period lessons
+		if (l.is_static && l.cancelled_at && recurrence === "fixed_period") return false
+		return true
+	})
 
 	if (lError) {
 		return NextResponse.json({ error: lError.message }, { status: 500 })
@@ -123,7 +129,7 @@ export async function GET(
 		return names.length ? names.join(" & ") : "Couple"
 	}
 
-	const list = (lessons ?? []).map((l) => ({
+	const list = lessons.map((l) => ({
 		id: l.id,
 		lesson_type: l.lesson_type,
 		start_at: l.start_at,
@@ -138,6 +144,7 @@ export async function GET(
 		group_lesson_type_id: l.group_lesson_type_id ?? null,
 		label: lessonLabel(l),
 		is_static: l.is_static,
+		cancelled_at: l.cancelled_at ?? null,
 	}))
 
 	return NextResponse.json({ week_start: monday, lessons: list })

@@ -39,7 +39,7 @@ export async function GET() {
 		if (m.couple_id && myCoupleIds.has(m.couple_id)) myGroupIds.add(m.group_id)
 	}
 
-	// Upcoming lessons in my club (not cancelled)
+	// Upcoming lessons in my club (include cancelled so user still sees them as disabled)
 	const { data: timetableRows } = await supabase
 		.from("timetables")
 		.select("id")
@@ -51,10 +51,9 @@ export async function GET() {
 
 	const { data: lessons, error: lError } = await supabase
 		.from("lessons")
-		.select("id, lesson_type, start_at, end_at, room_id, trainer_id, student_id, couple_id, group_id, group_lesson_type_id")
+		.select("id, lesson_type, start_at, end_at, room_id, trainer_id, student_id, couple_id, group_id, group_lesson_type_id, cancelled_at, cancellation_note")
 		.in("timetable_id", timetableIds)
 		.gt("start_at", now)
-		.is("cancelled_at", null)
 		.order("start_at", { ascending: true })
 
 	if (lError) {
@@ -129,6 +128,8 @@ export async function GET() {
 		trainer_name: l.trainer_id ? profileMap.get(l.trainer_id) ?? null : null,
 		label: label(l),
 		is_trainer: l.trainer_id === user.id,
+		cancelled_at: l.cancelled_at ?? null,
+		cancellation_note: l.cancellation_note ?? null,
 	}))
 
 	return NextResponse.json({ lessons: list })
