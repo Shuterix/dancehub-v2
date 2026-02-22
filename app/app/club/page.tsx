@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { Copy, Users, UserPlus, GraduationCap, Heart, DoorOpen, BookOpen, Calendar } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -61,12 +62,7 @@ export default function ClubPage() {
 
 	if (loading) {
 		return (
-			<div className="space-y-6">
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight text-foreground">Club</h1>
-					<p className="text-muted-foreground text-sm">Loading…</p>
-				</div>
-			</div>
+			<PageSkeleton backHref="/app" showBack={false} singleCard />
 		)
 	}
 

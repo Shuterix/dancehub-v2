@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { ChevronLeft, ChevronRight, Loader2, Calendar } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -241,19 +242,7 @@ export default function NewTimetablePage() {
 	}
 
 	if (loading || !clubData) {
-		return (
-			<div className="space-y-6">
-				<Button variant="ghost" size="icon" asChild>
-					<Link href="/app/club/timetables" aria-label="Back">
-						<ChevronLeft className="size-4" />
-					</Link>
-				</Button>
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight text-foreground">Create timetable</h1>
-					<p className="text-muted-foreground text-sm">{loading ? "Loading…" : error ?? "Unable to load."}</p>
-				</div>
-			</div>
-		)
+		return <PageSkeleton backHref="/app/club/timetables" cardRowCount={10} />
 	}
 
 	const { allStudents, couples, allTrainers } = clubData
@@ -553,17 +542,17 @@ export default function NewTimetablePage() {
 									)}
 								</div>
 							</div>
-							<div className="flex flex-wrap items-center justify-between gap-2">
-								<Button variant="outline" onClick={() => setStep(1)}>
+							<div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+								<Button variant="outline" onClick={() => setStep(1)} className="w-full sm:w-auto">
 									<ChevronLeft className="mr-2 size-4" />
 									Back
 								</Button>
-								<div className="flex gap-2">
-									<Button variant="secondary" onClick={handleStep2Finish} disabled={saving}>
+								<div className="flex flex-col gap-2 sm:flex-row sm:gap-2 w-full sm:w-auto">
+									<Button variant="secondary" onClick={handleStep2Finish} disabled={saving} className="w-full sm:w-auto">
 										{saving && <Loader2 className="mr-2 size-4 animate-spin" />}
 										Finish (skip trainer limits)
 									</Button>
-									<Button onClick={handleStep2Next} disabled={saving}>
+									<Button onClick={handleStep2Next} disabled={saving} className="w-full sm:w-auto">
 										{saving && <Loader2 className="mr-2 size-4 animate-spin" />}
 										Next: Set trainer limits
 										<ChevronRight className="ml-2 size-4" />
@@ -617,12 +606,12 @@ export default function NewTimetablePage() {
 									)}
 								</div>
 							</div>
-							<div className="flex justify-between">
-								<Button variant="outline" onClick={() => setStep(2)}>
+							<div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+								<Button variant="outline" onClick={() => setStep(2)} className="w-full sm:w-auto">
 									<ChevronLeft className="mr-2 size-4" />
 									Back
 								</Button>
-								<Button onClick={handleFinish} disabled={saving}>
+								<Button onClick={handleFinish} disabled={saving} className="w-full sm:w-auto">
 									{saving && <Loader2 className="mr-2 size-4 animate-spin" />}
 									Finish
 								</Button>

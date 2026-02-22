@@ -13,6 +13,7 @@ import {
 	Trash2,
 	GraduationCap,
 } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -179,21 +180,7 @@ export default function ClubRoomsPage() {
 	}
 
 	if (loading) {
-		return (
-			<div className="space-y-6">
-				<div className="flex items-center gap-2">
-					<Button variant="ghost" size="icon" asChild>
-						<Link href="/app/club" aria-label="Back to club">
-							<ChevronLeft className="size-4" />
-						</Link>
-					</Button>
-					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Rooms</h1>
-						<p className="text-muted-foreground text-sm">Loading…</p>
-					</div>
-				</div>
-			</div>
-		)
+		return <PageSkeleton backHref="/app/club" cardRowCount={5} />
 	}
 
 	if (error || !clubData) {

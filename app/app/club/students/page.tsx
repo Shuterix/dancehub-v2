@@ -1,10 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock } from "lucide-react"
+import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock, Search } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -26,6 +27,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import { formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import { cn } from "@/lib/utils"
 
@@ -129,6 +131,28 @@ export default function ClubStudentsPage() {
 	const [detailStudent, setDetailStudent] = useState<Student | null>(null)
 	const [savingUserId, setSavingUserId] = useState<string | null>(null)
 	const [removingFromGroup, setRemovingFromGroup] = useState<string | null>(null)
+	const [searchQuery, setSearchQuery] = useState("")
+	const [ageMin, setAgeMin] = useState<string>("")
+	const [ageMax, setAgeMax] = useState<string>("")
+	const [filterRankStandard, setFilterRankStandard] = useState<string>("")
+	const [filterRankLatin, setFilterRankLatin] = useState<string>("")
+
+	const filteredStudents = useMemo(() => {
+		const list = data?.allStudents ?? []
+		const q = searchQuery.trim().toLowerCase()
+		const min = ageMin.trim() === "" ? null : parseInt(ageMin, 10)
+		const max = ageMax.trim() === "" ? null : parseInt(ageMax, 10)
+		const rankStt = filterRankStandard.trim() || null
+		const rankLat = filterRankLatin.trim() || null
+		return list.filter((s) => {
+			if (q && !s.full_name.toLowerCase().includes(q)) return false
+			if (min != null && !Number.isNaN(min) && (s.age == null || s.age < min)) return false
+			if (max != null && !Number.isNaN(max) && (s.age == null || s.age > max)) return false
+			if (rankStt != null && s.rank_standard !== rankStt) return false
+			if (rankLat != null && s.rank_latin !== rankLat) return false
+			return true
+		})
+	}, [data?.allStudents, searchQuery, ageMin, ageMax, filterRankStandard, filterRankLatin])
 
 	const loadData = useCallback(() => {
 		fetch("/api/club")
@@ -236,21 +260,7 @@ export default function ClubStudentsPage() {
 	}
 
 	if (loading) {
-		return (
-			<div className="space-y-6">
-				<div className="flex items-center gap-2">
-					<Button variant="ghost" size="icon" asChild>
-						<Link href="/app/club" aria-label="Back to club">
-							<ChevronLeft className="size-4" />
-						</Link>
-					</Button>
-					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Students</h1>
-						<p className="text-muted-foreground text-sm">Loading…</p>
-					</div>
-				</div>
-			</div>
-		)
+		return <PageSkeleton backHref="/app/club" cardRowCount={8} />
 	}
 
 	if (error || !data) {
@@ -303,14 +313,80 @@ export default function ClubStudentsPage() {
 						Manage couples in the <Link href="/app/club/couples" className="text-primary underline underline-offset-2">Couples</Link> section.
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
+				<CardContent className="space-y-4">
+					{allStudents.length > 0 && (
+						<div className="flex flex-wrap items-end gap-3">
+							<div className="relative flex-1 min-w-[12rem] max-w-xs">
+								<Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+								<Input
+									value={searchQuery}
+									onChange={(e) => setSearchQuery(e.target.value)}
+									placeholder="Search by name…"
+									className="h-9 pl-9 rounded-lg"
+									aria-label="Search students"
+								/>
+							</div>
+							<div className="flex items-center gap-2">
+								<Input
+									type="number"
+									min={0}
+									placeholder="Min age"
+									value={ageMin}
+									onChange={(e) => setAgeMin(e.target.value)}
+									className="h-9 w-24 rounded-lg"
+									aria-label="Minimum age"
+								/>
+								<span className="text-muted-foreground text-sm">–</span>
+								<Input
+									type="number"
+									min={0}
+									placeholder="Max age"
+									value={ageMax}
+									onChange={(e) => setAgeMax(e.target.value)}
+									className="h-9 w-24 rounded-lg"
+									aria-label="Maximum age"
+								/>
+							</div>
+							<div className="flex items-center gap-2">
+								<Select value={filterRankStandard || "__all__"} onValueChange={(v) => setFilterRankStandard(v === "__all__" ? "" : v)}>
+									<SelectTrigger className="h-9 w-28" aria-label="Filter by Standard rank">
+										<SelectValue placeholder="STT: All" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__all__">STT: All</SelectItem>
+										{RANKS.map((r) => (
+											<SelectItem key={r} value={r}>STT: {r}</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<Select value={filterRankLatin || "__all__"} onValueChange={(v) => setFilterRankLatin(v === "__all__" ? "" : v)}>
+									<SelectTrigger className="h-9 w-28" aria-label="Filter by Latin rank">
+										<SelectValue placeholder="LAT: All" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__all__">LAT: All</SelectItem>
+										{RANKS.map((r) => (
+											<SelectItem key={r} value={r}>LAT: {r}</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+							{(searchQuery.trim() || ageMin.trim() || ageMax.trim() || filterRankStandard || filterRankLatin) && (
+								<p className="text-muted-foreground text-xs">
+									Showing {filteredStudents.length} of {allStudents.length}
+								</p>
+							)}
+						</div>
+					)}
 					{allStudents.length === 0 ? (
 						<p className="text-muted-foreground text-sm">No students in this club yet.</p>
+					) : filteredStudents.length === 0 ? (
+						<p className="text-muted-foreground text-sm">No students match your filters.</p>
 					) : (
 						<>
 							{/* Mobile/tablet: compact list + detail sheet */}
 							<div className="space-y-2 lg:hidden">
-								{allStudents.map((s) => {
+								{filteredStudents.map((s) => {
 									const studentGroups = getStudentGroups(s.user_id)
 									return (
 										<div
@@ -360,7 +436,7 @@ export default function ClubStudentsPage() {
 										Groups
 									</span>
 								</div>
-								{allStudents.map((s) => {
+								{filteredStudents.map((s) => {
 									const studentGroups = getStudentGroups(s.user_id)
 									return (
 										<div

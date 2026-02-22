@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, UserPlus, Loader2, ChevronLeft, Trash2, Clock, MoreVertical, UsersRound } from "lucide-react"
+import { Users, UserPlus, Loader2, ChevronLeft, Trash2, Clock, MoreVertical, UsersRound, Search } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -35,6 +36,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import { intersectAvailability, formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import { cn } from "@/lib/utils"
 
@@ -107,6 +109,19 @@ export default function ClubCouplesPage() {
 	const [removingId, setRemovingId] = useState<string | null>(null)
 	const [detailCouple, setDetailCouple] = useState<Couple | null>(null)
 	const [removingFromGroup, setRemovingFromGroup] = useState<string | null>(null)
+	const [searchQuery, setSearchQuery] = useState("")
+
+	const filteredCouples = useMemo(() => {
+		const list = data?.couples ?? []
+		const q = searchQuery.trim().toLowerCase()
+		if (!q) return list
+		return list.filter((c) => {
+			const name = (c.name ?? [c.partner1_name, c.partner2_name].filter(Boolean).join(" & ")) || ""
+			return name.toLowerCase().includes(q) ||
+				(c.partner1_name?.toLowerCase().includes(q)) ||
+				(c.partner2_name?.toLowerCase().includes(q))
+		})
+	}, [data?.couples, searchQuery])
 
 	function load() {
 		setLoading(true)
@@ -208,21 +223,7 @@ export default function ClubCouplesPage() {
 	}
 
 	if (loading && !data) {
-		return (
-			<div className="space-y-6">
-				<div className="flex items-center gap-2">
-					<Button variant="ghost" size="icon" asChild>
-						<Link href="/app/club" aria-label="Back to club">
-							<ChevronLeft className="size-4" />
-						</Link>
-					</Button>
-					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Couples</h1>
-						<p className="text-muted-foreground text-sm">Loading…</p>
-					</div>
-				</div>
-			</div>
-		)
+		return <PageSkeleton backHref="/app/club" cardRowCount={6} />
 	}
 
 	if (error && !data) {
@@ -292,6 +293,23 @@ export default function ClubCouplesPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
+					{couples.length > 0 && (
+						<div className="relative">
+							<Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+							<Input
+								value={searchQuery}
+								onChange={(e) => setSearchQuery(e.target.value)}
+								placeholder="Search by couple or partner name…"
+								className="h-9 pl-9 rounded-lg max-w-sm"
+								aria-label="Search couples"
+							/>
+							{searchQuery.trim() && (
+								<p className="text-muted-foreground text-xs mt-1.5">
+									Showing {filteredCouples.length} of {couples.length} couples
+								</p>
+							)}
+						</div>
+					)}
 					{isTrainer && (
 						<Dialog open={createOpen} onOpenChange={setCreateOpen}>
 							<Button
@@ -422,11 +440,13 @@ export default function ClubCouplesPage() {
 
 					{couples.length === 0 ? (
 						<p className="text-muted-foreground text-sm">No couples yet.</p>
+					) : filteredCouples.length === 0 ? (
+						<p className="text-muted-foreground text-sm">No couples match your search.</p>
 					) : (
 						<>
 							{/* Mobile/tablet: compact list + detail sheet */}
 							<div className="space-y-2 lg:hidden">
-								{couples.map((c) => {
+								{filteredCouples.map((c) => {
 									const coupleGroups = getCoupleGroups(c.id)
 									return (
 										<div
@@ -474,7 +494,7 @@ export default function ClubCouplesPage() {
 									</span>
 									{isTrainer && <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide text-right">Action</span>}
 								</div>
-								{couples.map((c) => {
+								{filteredCouples.map((c) => {
 									const coupleAvailability =
 										(c.availability?.length ? c.availability : null) ??
 										intersectAvailability(

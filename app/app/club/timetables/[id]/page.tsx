@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { ChevronLeft, Calendar, Loader2, UsersRound, GraduationCap, Clock, Sparkles, CalendarDays, Settings } from "lucide-react"
+import { ChevronLeft, Calendar, Loader2, UsersRound, GraduationCap, Clock, Sparkles, CalendarDays, Settings, User, BookOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
 	Dialog,
@@ -21,6 +22,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select"
+import { useSetBreadcrumbLastSegment } from "@/app/app/_components/sidebar"
+import { LessonsLoadingSkeleton, TimetableDetailSkeleton } from "@/app/app/_components/page-skeleton"
 import { cn } from "@/lib/utils"
 
 type LessonItem = {
@@ -135,6 +138,7 @@ export default function TimetableDetailPage({
 	params: Promise<{ id: string }>
 }) {
 	const router = useRouter()
+	const setBreadcrumbLastSegment = useSetBreadcrumbLastSegment()
 	const [id, setId] = useState<string | null>(null)
 	const [data, setData] = useState<TimetableDetail | null>(null)
 	const [loading, setLoading] = useState(true)
@@ -146,6 +150,12 @@ export default function TimetableDetailPage({
 	const [distribution, setDistribution] = useState<string>("same")
 	const [selectedLesson, setSelectedLesson] = useState<LessonItem | null>(null)
 	const [settingsOpen, setSettingsOpen] = useState(false)
+	// UI-only filters (do not edit timetable)
+	const [filterLabels, setFilterLabels] = useState<Set<string>>(new Set())
+	const [filterTrainerIds, setFilterTrainerIds] = useState<Set<string>>(new Set())
+	const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set())
+	type ShortfallItem = { target_id?: string; group_id?: string; group_lesson_type_id?: string; desired_lessons_count: number; actual_count: number }
+	const [shortfalls, setShortfalls] = useState<ShortfallItem[]>([])
 
 	useEffect(() => {
 		params.then((p) => setId(p.id))
@@ -202,6 +212,44 @@ export default function TimetableDetailPage({
 		loadLessons()
 	}, [id, weekStart, loadLessons])
 
+	// Show timetable name in breadcrumb instead of ID
+	useEffect(() => {
+		if (data?.timetable?.name) setBreadcrumbLastSegment(data.timetable.name)
+		return () => setBreadcrumbLastSegment(null)
+	}, [data?.timetable?.name, setBreadcrumbLastSegment])
+
+	const filteredLessons = useMemo(() => {
+		return lessons.filter((l) => {
+			if (filterLabels.size > 0 && !filterLabels.has(l.label)) return false
+			if (filterTrainerIds.size > 0) {
+				if (!l.trainer_id || !filterTrainerIds.has(l.trainer_id)) return false
+			}
+			if (filterTypes.size > 0 && !filterTypes.has(l.lesson_type)) return false
+			return true
+		})
+	}, [lessons, filterLabels, filterTrainerIds, filterTypes])
+
+	const filterOptions = useMemo(() => {
+		const labels = new Set<string>()
+		const trainers: { id: string; name: string }[] = []
+		const trainerIds = new Set<string>()
+		const types = new Set<string>()
+		for (const l of lessons) {
+			if (l.label) labels.add(l.label)
+			if (l.trainer_id && l.trainer_name && !trainerIds.has(l.trainer_id)) {
+				trainerIds.add(l.trainer_id)
+				trainers.push({ id: l.trainer_id, name: l.trainer_name })
+			}
+			if (l.lesson_type) types.add(l.lesson_type)
+		}
+		trainers.sort((a, b) => a.name.localeCompare(b.name))
+		return {
+			labels: [...labels].sort(),
+			trainers,
+			types: [...types].sort(),
+		}
+	}, [lessons])
+
 	async function handleGenerate(options?: {
 		group_targets?: Array<{
 			group_id: string
@@ -229,6 +277,8 @@ export default function TimetableDetailPage({
 				toast.error(json.error ?? "Generate failed")
 				return
 			}
+			if (json.week_start) setWeekStart(json.week_start)
+			setShortfalls(json.shortfalls ?? [])
 			const created = json.created ?? 0
 			if (created > 0) {
 				toast.success(`Created ${created} lessons for the week.`)
@@ -257,16 +307,19 @@ export default function TimetableDetailPage({
 
 	if (!id || loading) {
 		return (
-			<div className="space-y-6">
-				<Button variant="ghost" size="icon" asChild>
-					<Link href="/app/club/timetables" aria-label="Back">
-						<ChevronLeft className="size-4" />
-					</Link>
-				</Button>
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight text-foreground">Timetable</h1>
-					<p className="text-muted-foreground text-sm">{loading ? "Loading…" : "Invalid timetable."}</p>
+			<div className="space-y-4">
+				<div className="flex items-center gap-2">
+					<Button variant="ghost" size="icon" asChild>
+						<Link href="/app/club/timetables" aria-label="Back">
+							<ChevronLeft className="size-4" />
+						</Link>
+					</Button>
+					<div>
+						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Timetable</h1>
+						<p className="text-muted-foreground text-sm">{loading ? "Loading…" : "Invalid timetable."}</p>
+					</div>
 				</div>
+				{loading && <TimetableDetailSkeleton />}
 			</div>
 		)
 	}
@@ -288,6 +341,38 @@ export default function TimetableDetailPage({
 	}
 
 	const { timetable, preferences, targets, trainer_limits } = data
+
+	const hasActiveFilters = filterLabels.size > 0 || filterTrainerIds.size > 0 || filterTypes.size > 0
+	function clearFilters() {
+		setFilterLabels(new Set())
+		setFilterTrainerIds(new Set())
+		setFilterTypes(new Set())
+	}
+
+	function toggleLabel(label: string) {
+		setFilterLabels((prev) => {
+			const next = new Set(prev)
+			if (next.has(label)) next.delete(label)
+			else next.add(label)
+			return next
+		})
+	}
+	function toggleTrainer(id: string) {
+		setFilterTrainerIds((prev) => {
+			const next = new Set(prev)
+			if (next.has(id)) next.delete(id)
+			else next.add(id)
+			return next
+		})
+	}
+	function toggleType(type: string) {
+		setFilterTypes((prev) => {
+			const next = new Set(prev)
+			if (next.has(type)) next.delete(type)
+			else next.add(type)
+			return next
+		})
+	}
 
 	return (
 		<div className="space-y-4">
@@ -314,33 +399,154 @@ export default function TimetableDetailPage({
 				</Button>
 			</div>
 
-			<div className="flex flex-col gap-2">
+				<div className="flex flex-col gap-2">
 				<div className="flex items-center justify-between gap-2">
-					<label htmlFor="week-start" className="text-sm font-medium text-muted-foreground">Week</label>
+					<label htmlFor="week-start" className="text-sm font-medium text-muted-foreground">
+						{data?.timetable?.recurrence === "weekends_only" ? "Weekend (pick any day)" : "Week"}
+					</label>
 					<input
 						id="week-start"
 						type="date"
 						value={weekStart}
-						onChange={(e) => setWeekStart(e.target.value)}
+						onChange={(e) => {
+							setWeekStart(e.target.value)
+							setShortfalls([])
+						}}
 						className="rounded-md border border-input bg-background px-3 py-2 text-sm"
 					/>
 				</div>
 				{loadingLessons ? (
-					<p className="flex items-center gap-2 text-sm text-muted-foreground py-8">
-						<Loader2 className="size-4 animate-spin" /> Loading…
-					</p>
+					<LessonsLoadingSkeleton />
 				) : lessons.length === 0 ? (
 					<p className="text-muted-foreground text-sm py-8 text-center">
 						No lessons this week. Open <button type="button" onClick={() => setSettingsOpen(true)} className="underline font-medium">Settings</button> to configure and generate.
 					</p>
 				) : (
-					<LessonGrid
-						lessons={lessons}
-						weekStart={weekStart}
-						onLessonClick={setSelectedLesson}
-					/>
+					<>
+						{/* Filters: UI only, does not edit timetable */}
+						<div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<span className="text-sm font-medium text-foreground">Filters</span>
+								{hasActiveFilters && (
+									<Button variant="ghost" size="sm" className="text-xs h-7" onClick={clearFilters}>
+										Clear all
+									</Button>
+								)}
+							</div>
+							<div className="flex flex-wrap gap-3 text-sm">
+								<div className="flex flex-wrap items-center gap-1.5">
+									<span className="text-muted-foreground shrink-0">Participant:</span>
+									{filterOptions.labels.map((label) => (
+										<Badge
+											key={label}
+											variant={filterLabels.has(label) ? "default" : "outline"}
+											className="cursor-pointer font-normal"
+											role="button"
+											tabIndex={0}
+											onClick={() => toggleLabel(label)}
+											onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleLabel(label) } }}
+										>
+											{label}
+										</Badge>
+									))}
+								</div>
+								<div className="flex flex-wrap items-center gap-1.5">
+									<span className="text-muted-foreground shrink-0">Trainer:</span>
+									{filterOptions.trainers.map((t) => (
+										<Badge
+											key={t.id}
+											variant={filterTrainerIds.has(t.id) ? "default" : "outline"}
+											className="cursor-pointer font-normal"
+											role="button"
+											tabIndex={0}
+											onClick={() => toggleTrainer(t.id)}
+											onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleTrainer(t.id) } }}
+										>
+											{t.name}
+										</Badge>
+									))}
+								</div>
+								<div className="flex flex-wrap items-center gap-1.5">
+									<span className="text-muted-foreground shrink-0">Type:</span>
+									{filterOptions.types.map((type) => (
+										<Badge
+											key={type}
+											variant={filterTypes.has(type) ? "default" : "outline"}
+											className="cursor-pointer font-normal capitalize"
+											role="button"
+											tabIndex={0}
+											onClick={() => toggleType(type)}
+											onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleType(type) } }}
+										>
+											{type}
+										</Badge>
+									))}
+								</div>
+							</div>
+							{hasActiveFilters && (
+								<p className="text-xs text-muted-foreground">
+									Showing {filteredLessons.length} of {lessons.length} lessons
+								</p>
+							)}
+						</div>
+						{filteredLessons.length === 0 ? (
+							<p className="text-muted-foreground text-sm py-6 text-center">
+								No lessons match the current filters. Clear filters or change selection.
+							</p>
+						) : (
+						<LessonGrid
+							lessons={filteredLessons}
+							weekStart={weekStart}
+							onLessonClick={setSelectedLesson}
+						/>
+						)}
+					</>
 				)}
 			</div>
+
+			{lessons.length > 0 && (
+				<>
+					{hasActiveFilters && (
+						<p className="text-sm text-muted-foreground -mt-2">
+							Statistics below reflect filtered lessons ({filteredLessons.length} of {lessons.length}).
+						</p>
+					)}
+					{shortfalls.length > 0 && (
+						<Card className="mt-6 border-amber-500/50 bg-amber-500/10 dark:bg-amber-500/5">
+							<CardHeader className="pb-2">
+								<CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
+									<Clock className="size-4" />
+									Fewer lessons than requested
+								</CardTitle>
+								<CardDescription>
+									The following could not receive all requested lessons (no more available time in their schedule or the trainer’s):
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<ul className="space-y-1.5 text-sm">
+									{shortfalls.map((s, i) => {
+										const label = s.target_id
+											? data?.targets?.find((t) => t.id === s.target_id)?.label
+											: data?.group_targets?.find(
+												(gt) => gt.group_id === s.group_id && gt.group_lesson_type_id === s.group_lesson_type_id
+											)?.label
+										const name = label ?? (s.group_id ? "Group" : "Participant")
+										return (
+											<li key={i} className="flex flex-wrap items-center gap-2 rounded-md bg-background/60 px-2 py-1.5">
+												<span className="font-medium">{name}</span>
+												<span className="text-muted-foreground">
+													{s.actual_count} of {s.desired_lessons_count} lessons scheduled
+												</span>
+											</li>
+										)
+									})}
+								</ul>
+							</CardContent>
+						</Card>
+					)}
+					<TimetableStats lessons={filteredLessons} />
+				</>
+			)}
 
 			<LessonDetailDialog lesson={selectedLesson} open={!!selectedLesson} onOpenChange={(open) => !open && setSelectedLesson(null)} />
 			<SettingsDialog
@@ -771,6 +977,112 @@ function weekMonday(dateStr: string): string {
 	const diff = day === 0 ? -6 : 1 - day
 	d.setDate(d.getDate() + diff)
 	return d.toISOString().slice(0, 10)
+}
+
+function TimetableStats({ lessons }: { lessons: LessonItem[] }) {
+	const byParticipant = useMemo(() => {
+		const map = new Map<string, { total: number; byTrainer: Map<string, number> }>()
+		for (const l of lessons) {
+			const label = l.label || "—"
+			if (!map.has(label)) map.set(label, { total: 0, byTrainer: new Map() })
+			const entry = map.get(label)!
+			entry.total++
+			const t = l.trainer_name || "—"
+			entry.byTrainer.set(t, (entry.byTrainer.get(t) ?? 0) + 1)
+		}
+		return [...map.entries()].sort((a, b) => b[1].total - a[1].total)
+	}, [lessons])
+
+	const byTrainer = useMemo(() => {
+		const map = new Map<string, number>()
+		for (const l of lessons) {
+			const t = l.trainer_name || "—"
+			map.set(t, (map.get(t) ?? 0) + 1)
+		}
+		return [...map.entries()].sort((a, b) => b[1] - a[1])
+	}, [lessons])
+
+	const totalLessons = lessons.length
+
+	return (
+		<Card className="mt-6 overflow-hidden">
+			<CardHeader className="pb-3">
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<div>
+						<CardTitle className="text-lg flex items-center gap-2">
+							<BookOpen className="size-5 text-muted-foreground" />
+							Week statistics
+						</CardTitle>
+						<CardDescription className="mt-1">
+							Who has how many lessons and with which trainer.
+						</CardDescription>
+					</div>
+					<Badge variant="secondary" className="text-sm px-3 py-1 font-semibold">
+						{totalLessons} lesson{totalLessons !== 1 ? "s" : ""} this week
+					</Badge>
+				</div>
+			</CardHeader>
+			<CardContent className="space-y-6">
+				{/* By participant */}
+				<section className="space-y-2">
+					<h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+						<User className="size-4 text-muted-foreground" />
+						By participant
+					</h4>
+					<ul className="space-y-2">
+						{byParticipant.map(([label, { total, byTrainer: bt }]) => {
+							const trainerEntries = [...bt.entries()].filter(([name]) => name !== "—")
+							return (
+								<li
+									key={label}
+									className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5"
+								>
+									<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
+										{total}
+									</div>
+									<span className="font-medium min-w-0 truncate">{label}</span>
+									<div className="flex flex-wrap gap-1.5 ml-auto">
+										{trainerEntries.length === 0 ? (
+											<span className="text-xs text-muted-foreground">No trainer</span>
+										) : (
+											trainerEntries.map(([name, n]) => (
+												<Badge key={name} variant="outline" className="text-xs font-normal">
+													{n} with {name}
+												</Badge>
+											))
+										)}
+									</div>
+								</li>
+							)
+						})}
+					</ul>
+				</section>
+
+				{/* By trainer */}
+				<section className="space-y-2">
+					<h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+						<GraduationCap className="size-4 text-muted-foreground" />
+						By trainer
+					</h4>
+					<div className="flex flex-wrap gap-2">
+						{byTrainer.map(([name, count]) => (
+							<div
+								key={name}
+								className="flex items-center gap-2 rounded-lg border border-border bg-muted/10 px-3 py-2 min-w-0"
+							>
+								<span className="text-sm font-medium truncate max-w-[140px]">
+									{name === "—" ? "Unassigned" : name}
+								</span>
+								<Badge variant="secondary" className="shrink-0 font-semibold">
+									{count}
+								</Badge>
+							</div>
+						))}
+					</div>
+				</section>
+			</CardContent>
+		</Card>
+	)
 }
 
 function LessonDetailDialog({

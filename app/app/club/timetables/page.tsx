@@ -12,8 +12,17 @@ import {
 	Copy,
 	Trash2,
 } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 const RECURRENCE_LABELS: Record<string, string> = {
@@ -50,6 +59,7 @@ export default function ClubTimetablesPage() {
 	const [error, setError] = useState<string | null>(null)
 	const [deletingId, setDeletingId] = useState<string | null>(null)
 	const [duplicateId, setDuplicateId] = useState<string | null>(null)
+	const [deleteConfirm, setDeleteConfirm] = useState<Timetable | null>(null)
 
 	const loadClub = useCallback(() => {
 		return fetch("/api/club")
@@ -122,6 +132,7 @@ export default function ClubTimetablesPage() {
 
 	async function handleDelete(id: string) {
 		setDeletingId(id)
+		setDeleteConfirm(null)
 		try {
 			const res = await fetch(`/api/club/timetables/${id}`, { method: "DELETE" })
 			if (!res.ok) {
@@ -145,21 +156,7 @@ export default function ClubTimetablesPage() {
 	}
 
 	if (loading) {
-		return (
-			<div className="space-y-6">
-				<div className="flex items-center gap-2">
-					<Button variant="ghost" size="icon" asChild>
-						<Link href="/app/club" aria-label="Back to club">
-							<ChevronLeft className="size-4" />
-						</Link>
-					</Button>
-					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Timetables</h1>
-						<p className="text-muted-foreground text-sm">Loading…</p>
-					</div>
-				</div>
-			</div>
-		)
+		return <PageSkeleton backHref="/app/club" cardGridCount={6} />
 	}
 
 	if (error || !clubData) {
@@ -230,21 +227,19 @@ export default function ClubTimetablesPage() {
 					) : (
 						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 							{timetables.map((t) => (
-								<div
+								<Link
 									key={t.id}
+									href={`/app/club/timetables/${t.id}`}
 									className={cn(
-										"flex flex-col rounded-xl border border-border bg-muted/30 p-4 transition-colors",
+										"flex flex-col rounded-xl border border-border bg-muted/30 p-4 transition-colors cursor-pointer",
 										"hover:bg-muted/50"
 									)}
 								>
 									<div className="flex items-start justify-between gap-2">
 										<div className="min-w-0 flex-1">
-											<Link
-												href={`/app/club/timetables/${t.id}`}
-												className="font-semibold text-foreground hover:underline truncate block"
-											>
+											<span className="font-semibold text-foreground truncate block">
 												{t.name}
-											</Link>
+											</span>
 											<p className="mt-0.5 text-muted-foreground text-sm">
 												{RECURRENCE_LABELS[t.recurrence] ?? t.recurrence}
 											</p>
@@ -263,12 +258,16 @@ export default function ClubTimetablesPage() {
 											)}
 										</div>
 										{isTrainer && (
-											<div className="flex shrink-0 gap-1">
+											<div className="flex shrink-0 gap-1" onClick={(e) => e.preventDefault()}>
 												<Button
 													variant="ghost"
 													size="icon"
 													className="size-8"
-													onClick={() => handleDuplicate(t)}
+													onClick={(e) => {
+														e.preventDefault()
+														e.stopPropagation()
+														handleDuplicate(t)
+													}}
 													disabled={duplicateId === t.id}
 													aria-label="Duplicate"
 												>
@@ -282,7 +281,11 @@ export default function ClubTimetablesPage() {
 													variant="ghost"
 													size="icon"
 													className="size-8 text-destructive hover:text-destructive"
-													onClick={() => handleDelete(t.id)}
+													onClick={(e) => {
+														e.preventDefault()
+														e.stopPropagation()
+														setDeleteConfirm(t)
+													}}
 													disabled={deletingId === t.id}
 													aria-label="Delete"
 												>
@@ -295,12 +298,35 @@ export default function ClubTimetablesPage() {
 											</div>
 										)}
 									</div>
-								</div>
+								</Link>
 							))}
 						</div>
 					)}
 				</CardContent>
 			</Card>
+
+			<Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle>Delete timetable</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to delete <strong>{deleteConfirm?.name}</strong>? This will remove the timetable and all its lessons, targets, and settings. This cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter className="gap-2 sm:gap-0">
+						<Button variant="outline" onClick={() => setDeleteConfirm(null)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={() => deleteConfirm && handleDelete(deleteConfirm.id)}
+							disabled={deletingId === deleteConfirm?.id}
+						>
+							{deletingId === deleteConfirm?.id ? <Loader2 className="size-4 animate-spin" /> : "Delete"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	)
 }

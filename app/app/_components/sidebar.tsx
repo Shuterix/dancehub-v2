@@ -1,9 +1,9 @@
 "use client"
 
-import { LayoutDashboard, User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock, UsersRound, DoorOpen, BookOpen, Calendar } from "lucide-react"
+import { User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock, UsersRound, DoorOpen, BookOpen, Calendar, BookMarked } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Fragment, useEffect, useRef, useState } from "react"
+import { createContext, Fragment, useContext, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -17,7 +17,7 @@ import {
 import { ThemeSwitcher } from "@/components/theme-switcher"
 
 const navItems = [
-	{ title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboard },
+	{ title: "My lessons", url: "/app/my-lessons", icon: BookMarked },
 	{ title: "Club", url: "/app/club", icon: Users },
 	{ title: "Students", url: "/app/club/students", icon: UserPlus },
 	{ title: "Trainers", url: "/app/club/trainers", icon: GraduationCap },
@@ -224,7 +224,7 @@ export function DashboardSidebar({
 
 const SEGMENT_LABELS: Record<string, string> = {
 	app: "App",
-	dashboard: "Dashboard",
+	"my-lessons": "My lessons",
 	profile: "Profile",
 	availability: "Availability",
 	club: "Club",
@@ -232,16 +232,33 @@ const SEGMENT_LABELS: Record<string, string> = {
 	trainers: "Trainers",
 	couples: "Couples",
 	groups: "Groups",
+	timetables: "Timetables",
+}
+
+/** When set (e.g. by timetable detail page), the last path segment is shown as this label instead of the raw segment (e.g. UUID). */
+const BreadcrumbLastSegmentContext = createContext<{
+	lastSegmentLabel: string | null
+	setLastSegmentLabel: (label: string | null) => void
+}>({ lastSegmentLabel: null, setLastSegmentLabel: () => {} })
+
+export function useSetBreadcrumbLastSegment() {
+	return useContext(BreadcrumbLastSegmentContext).setLastSegmentLabel
+}
+
+function isUuid(segment: string): boolean {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)
 }
 
 function DashboardBreadcrumbs() {
 	const pathname = usePathname()
+	const { lastSegmentLabel } = useContext(BreadcrumbLastSegmentContext)
 	const segments = pathname.split("/").filter(Boolean)
 
 	const items = segments.map((segment, i) => {
 		const href = "/" + segments.slice(0, i + 1).join("/")
-		const label = SEGMENT_LABELS[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1)
 		const isLast = i === segments.length - 1
+		const useOverride = isLast && isUuid(segment) && lastSegmentLabel != null
+		const label = useOverride ? lastSegmentLabel : (SEGMENT_LABELS[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1))
 		return { href, label, isLast }
 	})
 
@@ -289,6 +306,7 @@ export function DashboardSidebarLayout({
 }) {
 	const pathname = usePathname()
 	const [mobileOpen, setMobileOpen] = useState(false)
+	const [lastSegmentLabel, setLastSegmentLabel] = useState<string | null>(null)
 	const prevPathnameRef = useRef(pathname)
 
 	// Close mobile sidebar when route changes (e.g. after tapping a nav link), not on initial mount
@@ -308,6 +326,7 @@ export function DashboardSidebarLayout({
 	}, [mobileOpen])
 
 	return (
+		<BreadcrumbLastSegmentContext.Provider value={{ lastSegmentLabel, setLastSegmentLabel }}>
 		<div className="flex h-[100dvh] max-h-[100dvh] w-full gap-0 overflow-hidden">
 			<DashboardSidebar
 				open={mobileOpen}
@@ -322,14 +341,15 @@ export function DashboardSidebarLayout({
 				/>
 			)}
 			<div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden sm:mr-4">
-				<header className="flex shrink-0 flex-col gap-2 border-border bg-background px-4 py-3 md:px-6 sm:my-4 sm:rounded-xl md:min-h-14 md:flex-row md:items-center">
-					<div className="flex h-10 items-center md:h-auto">
-						<DashboardSidebarTrigger onOpen={() => setMobileOpen(true)} />
+				<header className="flex shrink-0 flex-row items-center gap-2 border-border bg-background px-4 py-3 md:px-6 sm:my-4 sm:rounded-xl md:min-h-14">
+					<DashboardSidebarTrigger onOpen={() => setMobileOpen(true)} />
+					<div className="min-w-0 flex-1">
+						<DashboardBreadcrumbs />
 					</div>
-					<DashboardBreadcrumbs />
 				</header>
 				<main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-t-xl m-4">{children}</main>
 			</div>
 		</div>
+		</BreadcrumbLastSegmentContext.Provider>
 	)
 }

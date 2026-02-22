@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { GraduationCap, Loader2, ChevronLeft, MoreVertical, UserPlus, Copy, Check, Trash2 } from "lucide-react"
+import { GraduationCap, Loader2, ChevronLeft, MoreVertical, UserPlus, Copy, Check, Trash2, Search } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -21,6 +22,14 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -81,6 +90,30 @@ export default function ClubTrainersPage() {
 	const [removeTrainerId, setRemoveTrainerId] = useState<string | null>(null)
 	const [removing, setRemoving] = useState(false)
 	const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+	const [searchQuery, setSearchQuery] = useState("")
+	const [ageMin, setAgeMin] = useState("")
+	const [ageMax, setAgeMax] = useState("")
+	const [externalOnly, setExternalOnly] = useState(false)
+	const [filterRankStandard, setFilterRankStandard] = useState("")
+	const [filterRankLatin, setFilterRankLatin] = useState("")
+
+	const filteredTrainers = useMemo(() => {
+		const list = data?.allTrainers ?? []
+		const q = searchQuery.trim().toLowerCase()
+		const min = ageMin.trim() === "" ? null : parseInt(ageMin, 10)
+		const max = ageMax.trim() === "" ? null : parseInt(ageMax, 10)
+		const rankStt = filterRankStandard.trim() || null
+		const rankLat = filterRankLatin.trim() || null
+		return list.filter((t) => {
+			if (externalOnly && !t.is_external) return false
+			if (q && !t.full_name.toLowerCase().includes(q)) return false
+			if (min != null && !Number.isNaN(min) && (t.age == null || t.age < min)) return false
+			if (max != null && !Number.isNaN(max) && (t.age == null || t.age > max)) return false
+			if (rankStt != null && t.rank_standard !== rankStt) return false
+			if (rankLat != null && t.rank_latin !== rankLat) return false
+			return true
+		})
+	}, [data?.allTrainers, searchQuery, ageMin, ageMax, externalOnly, filterRankStandard, filterRankLatin])
 
 	function loadClub() {
 		return fetch("/api/club")
@@ -118,21 +151,7 @@ export default function ClubTrainersPage() {
 	}, [])
 
 	if (loading) {
-		return (
-			<div className="space-y-6">
-				<div className="flex items-center gap-2">
-					<Button variant="ghost" size="icon" asChild>
-						<Link href="/app/club" aria-label="Back to club">
-							<ChevronLeft className="size-4" />
-						</Link>
-					</Button>
-					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Trainers</h1>
-						<p className="text-muted-foreground text-sm">Loading…</p>
-					</div>
-				</div>
-			</div>
-		)
+		return <PageSkeleton backHref="/app/club" cardRowCount={6} />
 	}
 
 	if (error || !data) {
@@ -253,14 +272,88 @@ export default function ClubTrainersPage() {
 						)}
 					</div>
 				</CardHeader>
-				<CardContent>
+				<CardContent className="space-y-4">
+					{allTrainers.length > 0 && (
+						<div className="flex flex-wrap items-end gap-3">
+							<div className="relative flex-1 min-w-[12rem] max-w-xs">
+								<Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+								<Input
+									value={searchQuery}
+									onChange={(e) => setSearchQuery(e.target.value)}
+									placeholder="Search by name…"
+									className="h-9 pl-9 rounded-lg"
+									aria-label="Search trainers"
+								/>
+							</div>
+							<div className="flex items-center gap-2">
+								<Input
+									type="number"
+									min={0}
+									placeholder="Min age"
+									value={ageMin}
+									onChange={(e) => setAgeMin(e.target.value)}
+									className="h-9 w-24 rounded-lg"
+									aria-label="Minimum age"
+								/>
+								<span className="text-muted-foreground text-sm">–</span>
+								<Input
+									type="number"
+									min={0}
+									placeholder="Max age"
+									value={ageMax}
+									onChange={(e) => setAgeMax(e.target.value)}
+									className="h-9 w-24 rounded-lg"
+									aria-label="Maximum age"
+								/>
+							</div>
+							<div className="flex items-center gap-2">
+								<Select value={filterRankStandard || "__all__"} onValueChange={(v) => setFilterRankStandard(v === "__all__" ? "" : v)}>
+									<SelectTrigger className="h-9 w-28" aria-label="Filter by Standard rank">
+										<SelectValue placeholder="STT: All" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__all__">STT: All</SelectItem>
+										{RANKS.map((r) => (
+											<SelectItem key={r} value={r}>STT: {r}</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<Select value={filterRankLatin || "__all__"} onValueChange={(v) => setFilterRankLatin(v === "__all__" ? "" : v)}>
+									<SelectTrigger className="h-9 w-28" aria-label="Filter by Latin rank">
+										<SelectValue placeholder="LAT: All" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__all__">LAT: All</SelectItem>
+										{RANKS.map((r) => (
+											<SelectItem key={r} value={r}>LAT: {r}</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+							<label className="flex cursor-pointer items-center gap-2">
+								<Checkbox
+									checked={externalOnly}
+									onCheckedChange={(c) => setExternalOnly(!!c)}
+									aria-label="External only"
+								/>
+								<span className="text-sm">External only</span>
+							</label>
+							{(searchQuery.trim() || ageMin.trim() || ageMax.trim() || externalOnly || filterRankStandard || filterRankLatin) && (
+								<p className="text-muted-foreground text-xs">
+									Showing {filteredTrainers.length} of {allTrainers.length}
+								</p>
+							)}
+						</div>
+					)}
 					{allTrainers.length === 0 ? (
 						<p className="text-muted-foreground text-sm">No trainers in this club yet.</p>
+					) : filteredTrainers.length === 0 ? (
+						<p className="text-muted-foreground text-sm">No trainers match your filters.</p>
 					) : (
 						<>
 							{/* Mobile/tablet: compact list + detail sheet */}
 							<div className="space-y-2 lg:hidden">
-								{allTrainers.map((t) => (
+								{filteredTrainers.map((t) => (
 									<div
 										key={t.user_id}
 										className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3"
@@ -311,7 +404,7 @@ export default function ClubTrainersPage() {
 									<span>STT</span>
 									<span>LAT</span>
 								</div>
-								{allTrainers.map((t) => (
+								{filteredTrainers.map((t) => (
 									<div
 										key={t.user_id}
 										className={cn(TRAINERS_GRID, "rounded-lg border border-border bg-muted/30 px-3 py-3")}

@@ -57,7 +57,7 @@ export async function POST(
 
 	const { data: timetable, error: tError } = await supabase
 		.from("timetables")
-		.select("id, day_start, day_end")
+		.select("id, day_start, day_end, recurrence")
 		.eq("id", timetableId)
 		.eq("club_id", clubId)
 		.single()
@@ -74,9 +74,17 @@ export async function POST(
 		// optional body
 	}
 	const weekStart = parseDate(body.week_start) ?? nextMonday(new Date())
-	// Ensure it's a Monday
+	// Ensure it's a Monday for standard week
 	const wd = new Date(weekStart + "T12:00:00").getDay()
-	const weekStartMonday = wd === 1 ? weekStart : nextMonday(new Date(weekStart + "T12:00:00"))
+	let weekStartMonday = wd === 1 ? weekStart : nextMonday(new Date(weekStart + "T12:00:00"))
+
+	// Weekend-only timetable: use the Saturday of that week so generation runs for Sat–Sun
+	const isWeekendsOnly = timetable.recurrence === "weekends_only"
+	if (isWeekendsOnly) {
+		const mon = new Date(weekStartMonday + "T12:00:00")
+		mon.setDate(mon.getDate() + 5)
+		weekStartMonday = mon.toISOString().slice(0, 10)
+	}
 
 	const { data: prefs } = await supabase
 		.from("timetable_preferences")
@@ -242,9 +250,22 @@ export async function POST(
 		return NextResponse.json({ error: `Solver error: ${message}` }, { status: 500 })
 	}
 
-	// Week end in local date (avoid UTC shift)
+	// Weekend-only: keep only lessons on Saturday and Sunday (first two days of solver week)
+	if (isWeekendsOnly) {
+		const sat = weekStartMonday
+		const sunDate = new Date(sat + "T12:00:00")
+		sunDate.setDate(sunDate.getDate() + 1)
+		const sun = sunDate.toISOString().slice(0, 10)
+		lessons = lessons.filter((l) => {
+			const d = l.start_at.slice(0, 10)
+			return d === sat || d === sun
+		})
+	}
+
+	// Week end in local date (avoid UTC shift). For weekends_only, week is Sat–Sun only.
 	const [wy, wm, dayOfMonth] = weekStartMonday.split("-").map(Number)
-	const weekEndDate = new Date(wy, (wm ?? 1) - 1, (dayOfMonth ?? 1) + 6)
+	const daysToAdd = isWeekendsOnly ? 1 : 6
+	const weekEndDate = new Date(wy, (wm ?? 1) - 1, (dayOfMonth ?? 1) + daysToAdd)
 	const weekEndStr =
 		`${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, "0")}-${String(weekEndDate.getDate()).padStart(2, "0")}` +
 		"T23:59:59.999"
@@ -268,8 +289,33 @@ export async function POST(
 		}
 	}
 
+	// Shortfalls: who got fewer lessons than desired (no more available time)
+	type Shortfall = { target_id?: string; group_id?: string; group_lesson_type_id?: string; desired_lessons_count: number; actual_count: number }
+	const shortfalls: Shortfall[] = []
+	for (const t of targets ?? []) {
+		const actual = lessons.filter(
+			(l) => l.student_id === t.student_id && l.couple_id === t.couple_id
+		).length
+		if (actual < t.desired_lessons_count) {
+			shortfalls.push({ target_id: t.id, desired_lessons_count: t.desired_lessons_count, actual_count: actual })
+		}
+	}
+	for (const gt of groupTargets ?? []) {
+		const actual = lessons.filter(
+			(l) => l.group_id === gt.group_id && l.group_lesson_type_id === gt.group_lesson_type_id
+		).length
+		if (actual < gt.desired_lessons_count) {
+			shortfalls.push({
+				group_id: gt.group_id,
+				group_lesson_type_id: gt.group_lesson_type_id,
+				desired_lessons_count: gt.desired_lessons_count,
+				actual_count: actual,
+			})
+		}
+	}
+
 	if (lessons.length === 0) {
-		return NextResponse.json({ created: 0, lessons: [], week_start: weekStartMonday })
+		return NextResponse.json({ created: 0, lessons: [], week_start: weekStartMonday, shortfalls })
 	}
 
 	const { data: inserted, error: insError } = await supabase
@@ -284,5 +330,6 @@ export async function POST(
 		created: inserted?.length ?? 0,
 		lessons: inserted ?? [],
 		week_start: weekStartMonday,
+		shortfalls,
 	})
 }

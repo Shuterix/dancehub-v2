@@ -423,4 +423,30 @@ describe("solveTimetable", () => {
 		expect(end).toBe("10:30") // 90 min from 09:00
 		expect(start).toBe("09:00")
 	})
+
+	it("returns empty when desired_lessons_count is 0", () => {
+		const input = defaultInput({
+			targets: [
+				{
+					id: "t1",
+					student_id: "s1",
+					couple_id: null,
+					desired_lessons_count: 0,
+					priority: "medium",
+					preferred_trainer_id: null,
+				},
+			],
+		})
+		expect(solveTimetable(input)).toHaveLength(0)
+	})
+
+	it("buildWeekSlots: duration larger than window yields no slots for that day segment", () => {
+		const slots = buildWeekSlots("2026-02-23", "09:00", "10:00", 90)
+		const mondaySlots = slots.filter((s) => s.date === "2026-02-23")
+		expect(mondaySlots).toHaveLength(0)
+	})
+
+	it("isAvailableAtSlot: null/undefined availability treated as available", () => {
+		expect(isAvailableAtSlot([], "2026-02-23", "09:00", "09:45")).toBe(true)
+	})
 })

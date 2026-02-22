@@ -226,4 +226,27 @@ describe("formatTimeHHmm and formatSlot", () => {
 		expect(formatSlot(slot("monday", "10:00", "12:00"))).toBe("Mon 10:00 – 12:00")
 		expect(formatSlot(slot("wednesday", "14:00", "17:00"))).toBe("Wed 14:00 – 17:00")
 	})
+
+	it("formatTimeHHmm: single segment (e.g. 12) yields NaN for minutes, still formats", () => {
+		expect(formatTimeHHmm("12")).toBe("12:00")
+	})
+
+	it("formatSlot: unknown day key is passed through", () => {
+		expect(formatSlot(slot("unknown", "10:00", "12:00"))).toContain("10:00")
+		expect(formatSlot(slot("unknown", "10:00", "12:00"))).toContain("unknown")
+	})
+})
+
+describe("Edge cases: intersectAvailability", () => {
+	it("same day different casing is not merged (different keys)", () => {
+		const a = [slot("Monday", "10:00", "12:00")]
+		const b = [slot("monday", "10:00", "12:00")]
+		expect(intersectAvailability(a, b)).toEqual([])
+	})
+})
+
+describe("Edge cases: intersectAllAvailability", () => {
+	it("single member empty slots returns []", () => {
+		expect(intersectAllAvailability([[]])).toEqual([])
+	})
 })

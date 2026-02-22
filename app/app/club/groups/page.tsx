@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -16,6 +16,7 @@ import {
 	Search,
 	Clock,
 } from "lucide-react"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -92,6 +93,14 @@ export default function ClubGroupsPage() {
 	const [saving, setSaving] = useState(false)
 	const [deletingId, setDeletingId] = useState<string | null>(null)
 	const [detailGroup, setDetailGroup] = useState<Group | null>(null)
+	const [listSearchQuery, setListSearchQuery] = useState("")
+
+	const filteredGroups = useMemo(() => {
+		const list = data?.groups ?? []
+		const q = listSearchQuery.trim().toLowerCase()
+		if (!q) return list
+		return list.filter((g) => g.name.toLowerCase().includes(q))
+	}, [data?.groups, listSearchQuery])
 
 	const loadData = useCallback(() => {
 		fetch("/api/club")
@@ -290,21 +299,7 @@ export default function ClubGroupsPage() {
 	}
 
 	if (loading) {
-		return (
-			<div className="space-y-6">
-				<div className="flex items-center gap-2">
-					<Button variant="ghost" size="icon" asChild>
-						<Link href="/app/club" aria-label="Back to club">
-							<ChevronLeft className="size-4" />
-						</Link>
-					</Button>
-					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Groups</h1>
-						<p className="text-muted-foreground text-sm">Loading…</p>
-					</div>
-				</div>
-			</div>
-		)
+		return <PageSkeleton backHref="/app/club" cardRowCount={6} />
 	}
 
 	if (error || !data) {
@@ -374,6 +369,23 @@ export default function ClubGroupsPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
+					{groups.length > 0 && (
+						<div className="relative max-w-xs">
+							<Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+							<Input
+								value={listSearchQuery}
+								onChange={(e) => setListSearchQuery(e.target.value)}
+								placeholder="Search groups by name…"
+								className="h-9 pl-9 rounded-lg"
+								aria-label="Search groups"
+							/>
+							{listSearchQuery.trim() && (
+								<p className="text-muted-foreground text-xs mt-1.5">
+									Showing {filteredGroups.length} of {groups.length} groups
+								</p>
+							)}
+						</div>
+					)}
 					{isTrainer && (
 						<Button
 							onClick={openCreate}
@@ -386,9 +398,11 @@ export default function ClubGroupsPage() {
 
 					{groups.length === 0 && !isTrainer ? (
 						<p className="text-muted-foreground text-sm">No groups in this club yet.</p>
+					) : filteredGroups.length === 0 ? (
+						<p className="text-muted-foreground text-sm">No groups match your search.</p>
 					) : (
 						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-							{groups.map((g) => (
+							{filteredGroups.map((g) => (
 								<div
 									key={g.id}
 									role="button"

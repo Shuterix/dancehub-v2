@@ -368,3 +368,77 @@ describe("refreshGroupAvailability", () => {
 		expect(updatePayload!.availability).toEqual([slot("wednesday", "15:00", "16:00")])
 	})
 })
+
+describe("Edge cases: refreshCoupleAvailability", () => {
+	it("does not update when couple not found (single returns null)", async () => {
+		let updateCalled = false
+		const from = vi.fn((table: string) => {
+			if (table === "couples") {
+				return {
+					select: vi.fn().mockReturnThis(),
+					eq: vi.fn().mockReturnThis(),
+					single: vi.fn().mockResolvedValue({ data: null, error: null }),
+					update: () => {
+						updateCalled = true
+						return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) }
+					},
+				}
+			}
+			return {}
+		})
+		const supabase = { from } as unknown as SupabaseClient
+		await refreshCoupleAvailability(supabase, "nonexistent")
+		expect(updateCalled).toBe(false)
+	})
+
+	it("does not update when couple has missing partner ids", async () => {
+		let updateCalled = false
+		const from = vi.fn((table: string) => {
+			if (table === "couples") {
+				return {
+					select: vi.fn().mockReturnThis(),
+					eq: vi.fn().mockReturnThis(),
+					single: vi.fn().mockResolvedValue({
+						data: { partner1_user_id: "u1", partner2_user_id: null },
+						error: null,
+					}),
+					update: () => {
+						updateCalled = true
+						return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) }
+					},
+				}
+			}
+			return {}
+		})
+		const supabase = { from } as unknown as SupabaseClient
+		await refreshCoupleAvailability(supabase, "c1")
+		expect(updateCalled).toBe(false)
+	})
+})
+
+describe("Edge cases: refreshGroupAvailability", () => {
+	it("writes [] when group has no members", async () => {
+		let updatePayload: { availability: AvailabilitySlot[] } | null = null
+		const from = vi.fn((table: string) => {
+			if (table === "group_members") {
+				return {
+					select: vi.fn().mockReturnThis(),
+					eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+				}
+			}
+			if (table === "groups") {
+				return {
+					update: (p: { availability: AvailabilitySlot[] }) => {
+						updatePayload = p
+						return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) }
+					},
+				}
+			}
+			return {}
+		})
+		const supabase = { from } as unknown as SupabaseClient
+		await refreshGroupAvailability(supabase, "empty-group")
+		expect(updatePayload).not.toBeNull()
+		expect(updatePayload!.availability).toEqual([])
+	})
+})
