@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, UserPlus, Loader2, ChevronLeft, Trash2, Clock, MoreVertical } from "lucide-react"
+import { Users, UserPlus, Loader2, ChevronLeft, Trash2, Clock, MoreVertical, UsersRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -29,10 +29,19 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select"
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { intersectAvailability, formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import { cn } from "@/lib/utils"
 
+type GroupSummary = { id: string; name: string; student_ids: string[]; couple_ids: string[] }
+
 const COUPLES_GRID = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)] gap-4 items-center"
+const COUPLES_GRID_WITH_GROUPS = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)] gap-4 items-center"
 
 const RANK_STYLES: Record<string, string> = {
 	E: "bg-red-500/30 text-red-700 dark:text-red-300 border-red-500/50",
@@ -74,6 +83,8 @@ type Couple = {
 	partner2_name: string | null
 	partner1_availability: AvailabilitySlot[]
 	partner2_availability: AvailabilitySlot[]
+	/** Stored in DB (intersection of both partners). */
+	availability?: AvailabilitySlot[]
 }
 
 type ClubData = {
@@ -81,6 +92,7 @@ type ClubData = {
 	isTrainer: boolean
 	couples: Couple[]
 	unpairedStudents: UnpairedStudent[]
+	groups?: GroupSummary[]
 }
 
 export default function ClubCouplesPage() {
@@ -94,6 +106,7 @@ export default function ClubCouplesPage() {
 	const [creating, setCreating] = useState(false)
 	const [removingId, setRemovingId] = useState<string | null>(null)
 	const [detailCouple, setDetailCouple] = useState<Couple | null>(null)
+	const [removingFromGroup, setRemovingFromGroup] = useState<string | null>(null)
 
 	function load() {
 		setLoading(true)
@@ -161,6 +174,36 @@ export default function ClubCouplesPage() {
 			load()
 		} finally {
 			setRemovingId(null)
+		}
+	}
+
+	function getCoupleGroups(coupleId: string): GroupSummary[] {
+		if (!data?.groups) return []
+		return data.groups.filter((g) => g.couple_ids?.includes(coupleId) ?? false)
+	}
+
+	async function removeCoupleFromGroup(groupId: string, coupleId: string) {
+		const group = data?.groups?.find((g) => g.id === groupId)
+		if (!group) return
+		setRemovingFromGroup(`${groupId}-${coupleId}`)
+		try {
+			const res = await fetch(`/api/club/groups/${groupId}`, {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					student_ids: group.student_ids ?? [],
+					couple_ids: (group.couple_ids ?? []).filter((id) => id !== coupleId),
+				}),
+			})
+			const json = await res.json().catch(() => ({}))
+			if (!res.ok) {
+				toast.error(json.error ?? "Failed to remove from group")
+				return
+			}
+			toast.success("Removed from group")
+			load()
+		} finally {
+			setRemovingFromGroup(null)
 		}
 	}
 
@@ -383,60 +426,76 @@ export default function ClubCouplesPage() {
 						<>
 							{/* Mobile/tablet: compact list + detail sheet */}
 							<div className="space-y-2 lg:hidden">
-								{couples.map((c) => (
-									<div
-										key={c.id}
-										className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3"
-									>
-										<button
-											type="button"
-											onClick={() => setDetailCouple(c)}
-											className="min-w-0 flex-1 cursor-pointer text-left font-medium"
+								{couples.map((c) => {
+									const coupleGroups = getCoupleGroups(c.id)
+									return (
+										<div
+											key={c.id}
+											className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3"
 										>
-											{c.name ?? "Unnamed couple"}
-										</button>
-										<Button
-											variant="ghost"
-											size="icon"
-											className="shrink-0"
-											onClick={() => setDetailCouple(c)}
-											aria-label="View details"
-										>
-											<MoreVertical className="size-5" />
-										</Button>
-									</div>
-								))}
+											<button
+												type="button"
+												onClick={() => setDetailCouple(c)}
+												className="min-w-0 flex-1 cursor-pointer text-left font-medium"
+											>
+												{(c.name ?? [c.partner1_name, c.partner2_name].filter(Boolean).join(" & ")) || "Unnamed couple"}
+												{coupleGroups.length > 0 && (
+													<span className="ml-2 text-muted-foreground text-xs font-normal">
+														{coupleGroups.length} group{coupleGroups.length !== 1 ? "s" : ""}
+													</span>
+												)}
+											</button>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="shrink-0"
+												onClick={() => setDetailCouple(c)}
+												aria-label="View details"
+											>
+												<MoreVertical className="size-5" />
+											</Button>
+										</div>
+									)
+								})}
 							</div>
 
 							{/* Desktop: full grid */}
 							<div className="hidden lg:block space-y-4">
-								<div className={cn(COUPLES_GRID, isTrainer && "grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto]")}>
+								<div className={cn(COUPLES_GRID_WITH_GROUPS, isTrainer && "grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)_auto]")}>
 									<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Couple</span>
 									<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Partners</span>
 									<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
 										<Clock className="size-3.5" />
-										Couple availability
+										Availability
+									</span>
+									<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+										<UsersRound className="size-3.5" />
+										Groups
 									</span>
 									{isTrainer && <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide text-right">Action</span>}
 								</div>
 								{couples.map((c) => {
-									const coupleAvailability = intersectAvailability(
-										c.partner1_availability ?? [],
-										c.partner2_availability ?? []
-									)
+									const coupleAvailability =
+										(c.availability?.length ? c.availability : null) ??
+										intersectAvailability(
+											c.partner1_availability ?? [],
+											c.partner2_availability ?? []
+										)
+									const coupleGroups = getCoupleGroups(c.id)
+									const coupleDisplayName = (c.name ?? [c.partner1_name, c.partner2_name].filter(Boolean).join(" & ")) || "Unnamed couple"
 									return (
 										<div
 											key={c.id}
 											className={cn(
 												"rounded-lg border border-border bg-muted/30 p-4",
-												isTrainer ? "grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] gap-4 items-center" : COUPLES_GRID
+												isTrainer ? "grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)_auto] gap-4 items-center" : COUPLES_GRID_WITH_GROUPS
 											)}
 										>
-											<div className="font-medium">{c.name ?? "Unnamed couple"}</div>
-											<div className="text-muted-foreground text-sm">
+											<div className="font-medium min-w-0">{coupleDisplayName}</div>
+											<div className="text-muted-foreground text-sm min-w-0">
 												{c.partner1_name ?? "—"} & {c.partner2_name ?? "—"}
 											</div>
-											<div>
+											<div className="min-w-0">
 												{coupleAvailability.length === 0 ? (
 													<p className="text-muted-foreground text-sm">No overlapping availability.</p>
 												) : (
@@ -450,6 +509,56 @@ export default function ClubCouplesPage() {
 															</li>
 														))}
 													</ul>
+												)}
+											</div>
+											<div className="min-w-0">
+												{coupleGroups.length === 0 ? (
+													<span className="text-muted-foreground text-sm">—</span>
+												) : (
+													<DropdownMenu>
+														<DropdownMenuTrigger asChild>
+															<button
+																type="button"
+																className="flex items-center gap-1 text-left text-sm text-foreground hover:underline focus:outline-none focus:ring-2 focus:ring-primary rounded"
+																aria-label={`${coupleGroups.length} group(s). Open to view or remove`}
+															>
+																{coupleGroups.length <= 2 ? (
+																	<span className="truncate">
+																		{coupleGroups.map((g) => g.name).join(", ")}
+																	</span>
+																) : (
+																	<>
+																		<span className="truncate">{coupleGroups[0].name}</span>
+																		<span className="text-muted-foreground shrink-0">+{coupleGroups.length - 1}</span>
+																	</>
+																)}
+															</button>
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end" className="max-w-[16rem]">
+															{coupleGroups.map((g) => (
+																<DropdownMenuItem
+																	key={g.id}
+																	onSelect={(e) => {
+																		e.preventDefault()
+																		if (isTrainer) removeCoupleFromGroup(g.id, c.id)
+																	}}
+																	disabled={!isTrainer || removingFromGroup === `${g.id}-${c.id}`}
+																	className={cn(isTrainer && "flex items-center justify-between gap-2")}
+																>
+																	<span className="truncate">{g.name}</span>
+																	{isTrainer && (
+																		<span className="text-destructive text-xs shrink-0">
+																			{removingFromGroup === `${g.id}-${c.id}` ? (
+																				<Loader2 className="size-3.5 animate-spin" />
+																			) : (
+																				"Remove"
+																			)}
+																		</span>
+																	)}
+																</DropdownMenuItem>
+															))}
+														</DropdownMenuContent>
+													</DropdownMenu>
 												)}
 											</div>
 											{isTrainer && (
@@ -478,7 +587,9 @@ export default function ClubCouplesPage() {
 							<Sheet open={!!detailCouple} onOpenChange={(open) => !open && setDetailCouple(null)}>
 								<SheetContent side="right" className="flex flex-col">
 									<SheetHeader>
-										<SheetTitle>{detailCouple?.name ?? "Unnamed couple"}</SheetTitle>
+										<SheetTitle>
+											{(detailCouple?.name ?? [detailCouple?.partner1_name, detailCouple?.partner2_name].filter(Boolean).join(" & ")) || "Unnamed couple"}
+										</SheetTitle>
 									</SheetHeader>
 									{detailCouple && (
 										<div className="mt-6 space-y-4">
@@ -494,10 +605,12 @@ export default function ClubCouplesPage() {
 													Couple availability
 												</p>
 												{(() => {
-													const slots = intersectAvailability(
-														detailCouple.partner1_availability ?? [],
-														detailCouple.partner2_availability ?? []
-													)
+													const slots =
+														(detailCouple.availability?.length ? detailCouple.availability : null) ??
+														intersectAvailability(
+															detailCouple.partner1_availability ?? [],
+															detailCouple.partner2_availability ?? []
+														)
 													return slots.length === 0 ? (
 														<p className="text-muted-foreground text-sm mt-1.5">No overlapping availability.</p>
 													) : (
@@ -508,6 +621,44 @@ export default function ClubCouplesPage() {
 																	className="rounded-md bg-background border border-border px-2 py-1 text-sm"
 																>
 																	{formatSlot(slot)}
+																</li>
+															))}
+														</ul>
+													)
+												})()}
+											</div>
+											<div>
+												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+													<UsersRound className="size-3.5" />
+													Groups
+												</p>
+												{(() => {
+													const groups = getCoupleGroups(detailCouple.id)
+													if (groups.length === 0) {
+														return <p className="text-muted-foreground text-sm mt-0.5">Not in any group</p>
+													}
+													return (
+														<ul className="mt-1.5 space-y-1.5">
+															{groups.map((g) => (
+																<li key={g.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+																	<Link href="/app/club/groups" className="text-sm font-medium text-primary hover:underline truncate">
+																		{g.name}
+																	</Link>
+																	{isTrainer && (
+																		<Button
+																			variant="ghost"
+																			size="sm"
+																			className="text-destructive hover:text-destructive shrink-0 h-8"
+																			onClick={() => removeCoupleFromGroup(g.id, detailCouple.id)}
+																			disabled={removingFromGroup === `${g.id}-${detailCouple.id}`}
+																		>
+																			{removingFromGroup === `${g.id}-${detailCouple.id}` ? (
+																				<Loader2 className="size-4 animate-spin" />
+																			) : (
+																				"Remove"
+																			)}
+																		</Button>
+																	)}
 																</li>
 															))}
 														</ul>

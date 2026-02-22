@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { intersectAvailability, type AvailabilitySlot } from "@/lib/availability"
 
 export async function POST(request: Request) {
 	const supabase = await createClient()
@@ -83,5 +84,20 @@ export async function POST(request: Request) {
 	if (insertError) {
 		return NextResponse.json({ error: insertError.message }, { status: 500 })
 	}
+
+	const { data: profiles } = await supabase
+		.from("profiles")
+		.select("id, availability")
+		.in("id", [partner1_user_id, partner2_user_id])
+	const p1 = (profiles ?? []).find((p) => p.id === partner1_user_id)
+	const p2 = (profiles ?? []).find((p) => p.id === partner2_user_id)
+	const av1 = (Array.isArray(p1?.availability) ? p1?.availability : []) as AvailabilitySlot[]
+	const av2 = (Array.isArray(p2?.availability) ? p2?.availability : []) as AvailabilitySlot[]
+	const coupleAvailability = intersectAvailability(av1, av2)
+	await supabase
+		.from("couples")
+		.update({ availability: coupleAvailability })
+		.eq("id", newCouple!.id)
+
 	return NextResponse.json({ id: newCouple?.id })
 }

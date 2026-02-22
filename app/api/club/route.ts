@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { refreshCoupleAvailability, refreshGroupAvailability } from "@/lib/availability-db"
 
 export async function GET() {
 	const supabase = await createClient()
@@ -42,11 +43,27 @@ export async function GET() {
 	const myMembership = (members ?? []).find((m) => m.user_id === user.id)
 	const isTrainer = myMembership?.role === "trainer"
 
-	const { data: couples } = await supabase
+	let { data: couples } = await supabase
 		.from("couples")
-		.select("id, name, partner1_user_id, partner2_user_id")
+		.select("id, name, partner1_user_id, partner2_user_id, availability")
 		.eq("club_id", clubId)
 		.order("created_at", { ascending: true })
+
+	for (const c of couples ?? []) {
+		const hasPartners = c.partner1_user_id && c.partner2_user_id
+		const emptyAvail = !c.availability || (Array.isArray(c.availability) && c.availability.length === 0)
+		if (hasPartners && emptyAvail) {
+			await refreshCoupleAvailability(supabase, c.id)
+		}
+	}
+	if (couples?.length) {
+		const { data: refetched } = await supabase
+			.from("couples")
+			.select("id, name, partner1_user_id, partner2_user_id, availability")
+			.eq("club_id", clubId)
+			.order("created_at", { ascending: true })
+		if (refetched) couples = refetched
+	}
 
 	const userIds = [...new Set((members ?? []).map((m) => m.user_id))]
 	const { data: profiles } = await supabase
@@ -140,6 +157,52 @@ export async function GET() {
 			partner2_name: c.partner2_user_id ? nameByUserId.get(c.partner2_user_id) ?? null : null,
 			partner1_availability: (p1?.availability ?? []) as AvailabilitySlot[],
 			partner2_availability: (p2?.availability ?? []) as AvailabilitySlot[],
+			availability: (Array.isArray(c.availability) ? c.availability : []) as AvailabilitySlot[],
+		}
+	})
+
+	let { data: groupsRows } = await supabase
+		.from("groups")
+		.select("id, name, created_at, availability")
+		.eq("club_id", clubId)
+		.order("name", { ascending: true })
+
+	const groupIds = (groupsRows ?? []).map((g) => g.id)
+	const { data: groupMembersRows } = groupIds.length
+		? await supabase
+			.from("group_members")
+			.select("group_id, user_id, couple_id")
+			.in("group_id", groupIds)
+		: { data: [] }
+
+	for (const g of groupsRows ?? []) {
+		const memberCount = (groupMembersRows ?? []).filter((m) => m.group_id === g.id).length
+		const emptyAvail = !g.availability || (Array.isArray(g.availability) && g.availability.length === 0)
+		if (memberCount > 0 && emptyAvail) {
+			await refreshGroupAvailability(supabase, g.id)
+		}
+	}
+	if (groupsRows?.length) {
+		const { data: refetched } = await supabase
+			.from("groups")
+			.select("id, name, created_at, availability")
+			.eq("club_id", clubId)
+			.order("name", { ascending: true })
+		if (refetched) groupsRows = refetched
+	}
+
+	const groups = (groupsRows ?? []).map((g) => {
+		const members = (groupMembersRows ?? []).filter((m) => m.group_id === g.id)
+		const studentIds = members.map((m) => m.user_id).filter(Boolean) as string[]
+		const coupleIds = members.map((m) => m.couple_id).filter(Boolean) as string[]
+		return {
+			id: g.id,
+			name: g.name,
+			created_at: g.created_at,
+			student_ids: studentIds,
+			couple_ids: coupleIds,
+			member_count: members.length,
+			availability: (Array.isArray(g.availability) ? g.availability : []) as AvailabilitySlot[],
 		}
 	})
 
@@ -150,5 +213,6 @@ export async function GET() {
 		allStudents,
 		allTrainers,
 		unpairedStudents,
+		groups,
 	})
 }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { refreshCoupleAvailability, refreshGroupAvailability } from "@/lib/availability-db"
 
 export async function GET() {
 	const supabase = await createClient()
@@ -89,5 +91,32 @@ export async function PATCH(request: Request) {
 	const { error: profileError } = await supabase.from("profiles").upsert(profilePayload, { onConflict: "id" })
 
 	if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
+
+	// Cascade: recompute couple and group availability (use admin client so students can trigger updates)
+	if (availability !== undefined) {
+		const { data: couplesWithUser } = await supabase
+			.from("couples")
+			.select("id")
+			.or(`partner1_user_id.eq.${user.id},partner2_user_id.eq.${user.id}`)
+		const admin = createAdminClient()
+		for (const c of couplesWithUser ?? []) {
+			await refreshCoupleAvailability(admin, c.id)
+		}
+		const coupleIds = (couplesWithUser ?? []).map((c) => c.id)
+		const { data: groupMembers } = await supabase
+			.from("group_members")
+			.select("group_id")
+			.eq("user_id", user.id)
+		const { data: groupMembersByCouple } = coupleIds.length
+			? await supabase.from("group_members").select("group_id").in("couple_id", coupleIds)
+			: { data: [] }
+		const groupIds = new Set<string>()
+		for (const m of groupMembers ?? []) groupIds.add(m.group_id)
+		for (const m of groupMembersByCouple ?? []) groupIds.add(m.group_id)
+		for (const gid of groupIds) {
+			await refreshGroupAvailability(admin, gid)
+		}
+	}
+
 	return NextResponse.json({ ok: true })
 }

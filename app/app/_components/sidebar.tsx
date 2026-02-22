@@ -1,6 +1,6 @@
 "use client"
 
-import { LayoutDashboard, User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock } from "lucide-react"
+import { LayoutDashboard, User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock, UsersRound } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Fragment, useEffect, useRef, useState } from "react"
@@ -22,6 +22,7 @@ const navItems = [
 	{ title: "Students", url: "/app/club/students", icon: UserPlus },
 	{ title: "Trainers", url: "/app/club/trainers", icon: GraduationCap },
 	{ title: "Couples", url: "/app/club/couples", icon: Heart },
+	{ title: "Groups", url: "/app/club/groups", icon: UsersRound },
 ]
 
 function ClubHeader({ clubName }: { clubName: string | null }) {
@@ -227,6 +228,7 @@ const SEGMENT_LABELS: Record<string, string> = {
 	students: "Students",
 	trainers: "Trainers",
 	couples: "Couples",
+	groups: "Groups",
 }
 
 function DashboardBreadcrumbs() {

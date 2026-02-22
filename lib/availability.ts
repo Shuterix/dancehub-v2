@@ -36,6 +36,13 @@ export function intersectAvailability(
 	return result
 }
 
+/** Intersect multiple availability arrays (e.g. for a group). */
+export function intersectAllAvailability(slotsArray: AvailabilitySlot[][]): AvailabilitySlot[] {
+	if (slotsArray.length === 0) return []
+	if (slotsArray.length === 1) return slotsArray[0]
+	return slotsArray.reduce((acc, arr) => intersectAvailability(acc, arr))
+}
+
 export function formatTimeHHmm(hhmm: string): string {
 	if (!hhmm) return "–"
 	const [h, m] = hhmm.split(":").map(Number)

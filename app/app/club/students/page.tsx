@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, Loader2, ChevronLeft, MoreVertical } from "lucide-react"
+import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -20,9 +20,18 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet"
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import { cn } from "@/lib/utils"
 
-const STUDENTS_GRID = "grid grid-cols-[1fr_7rem_7rem_7rem_1fr] gap-3 items-center"
+type GroupSummary = { id: string; name: string; student_ids: string[]; couple_ids: string[] }
+
+const STUDENTS_GRID = "grid grid-cols-[1fr_6rem_6rem_6rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-3 items-center"
 
 const RANKS = ["E", "D", "C", "B", "A", "S"] as const
 type Rank = (typeof RANKS)[number]
@@ -102,12 +111,14 @@ type Student = {
 	rank_latin: string | null
 	age: number | null
 	partner_name: string | null
+	availability?: AvailabilitySlot[]
 }
 
 type ClubData = {
 	club: { id: string; name: string; code: string }
 	isTrainer: boolean
 	allStudents: Student[]
+	groups?: GroupSummary[]
 }
 
 export default function ClubStudentsPage() {
@@ -117,6 +128,7 @@ export default function ClubStudentsPage() {
 	const [error, setError] = useState<string | null>(null)
 	const [detailStudent, setDetailStudent] = useState<Student | null>(null)
 	const [savingUserId, setSavingUserId] = useState<string | null>(null)
+	const [removingFromGroup, setRemovingFromGroup] = useState<string | null>(null)
 
 	const loadData = useCallback(() => {
 		fetch("/api/club")
@@ -190,6 +202,36 @@ export default function ClubStudentsPage() {
 			loadData()
 		} finally {
 			setSavingUserId(null)
+		}
+	}
+
+	function getStudentGroups(studentId: string): GroupSummary[] {
+		if (!data?.groups) return []
+		return data.groups.filter((g) => g.student_ids?.includes(studentId) ?? false)
+	}
+
+	async function removeStudentFromGroup(groupId: string, userId: string) {
+		const group = data?.groups?.find((g) => g.id === groupId)
+		if (!group) return
+		setRemovingFromGroup(`${groupId}-${userId}`)
+		try {
+			const res = await fetch(`/api/club/groups/${groupId}`, {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					student_ids: (group.student_ids ?? []).filter((id) => id !== userId),
+					couple_ids: group.couple_ids ?? [],
+				}),
+			})
+			const json = await res.json().catch(() => ({}))
+			if (!res.ok) {
+				toast.error(json.error ?? "Failed to remove from group")
+				return
+			}
+			toast.success("Removed from group")
+			loadData()
+		} finally {
+			setRemovingFromGroup(null)
 		}
 	}
 
@@ -268,29 +310,37 @@ export default function ClubStudentsPage() {
 						<>
 							{/* Mobile/tablet: compact list + detail sheet */}
 							<div className="space-y-2 lg:hidden">
-								{allStudents.map((s) => (
-									<div
-										key={s.user_id}
-										className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3"
-									>
-										<button
-											type="button"
-											onClick={() => setDetailStudent(s)}
-											className="min-w-0 flex-1 cursor-pointer text-left font-medium"
+								{allStudents.map((s) => {
+									const studentGroups = getStudentGroups(s.user_id)
+									return (
+										<div
+											key={s.user_id}
+											className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3"
 										>
-											{s.full_name}
-										</button>
-										<Button
-											variant="ghost"
-											size="icon"
-											className="shrink-0"
-											onClick={() => setDetailStudent(s)}
-											aria-label="View details"
-										>
-											<MoreVertical className="size-5" />
-										</Button>
-									</div>
-								))}
+											<button
+												type="button"
+												onClick={() => setDetailStudent(s)}
+												className="min-w-0 flex-1 cursor-pointer text-left font-medium"
+											>
+												{s.full_name}
+												{studentGroups.length > 0 && (
+													<span className="ml-2 text-muted-foreground text-xs font-normal">
+														{studentGroups.length} group{studentGroups.length !== 1 ? "s" : ""}
+													</span>
+												)}
+											</button>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="shrink-0"
+												onClick={() => setDetailStudent(s)}
+												aria-label="View details"
+											>
+												<MoreVertical className="size-5" />
+											</Button>
+										</div>
+									)
+								})}
 							</div>
 
 							{/* Desktop: full grid */}
@@ -301,57 +351,134 @@ export default function ClubStudentsPage() {
 									<span>STT</span>
 									<span>LAT</span>
 									<span>Partner</span>
+									<span className="flex items-center gap-1">
+										<Clock className="size-3.5" />
+										Availability
+									</span>
+									<span className="flex items-center gap-1">
+										<UsersRound className="size-3.5" />
+										Groups
+									</span>
 								</div>
-								{allStudents.map((s) => (
-									<div
-										key={s.user_id}
-										className={cn(STUDENTS_GRID, "rounded-lg border border-border bg-muted/30 px-3 py-3")}
-									>
-										<div className="min-w-0">
-											<span className="font-medium">{s.full_name}</span>
+								{allStudents.map((s) => {
+									const studentGroups = getStudentGroups(s.user_id)
+									return (
+										<div
+											key={s.user_id}
+											className={cn(STUDENTS_GRID, "rounded-lg border border-border bg-muted/30 px-3 py-3")}
+										>
+											<div className="min-w-0">
+												<span className="font-medium">{s.full_name}</span>
+											</div>
+											<div className="text-muted-foreground text-sm tabular-nums">
+												{s.age != null ? `${s.age} ${s.age === 1 ? "year" : "years"} old` : "–"}
+											</div>
+											<div className="flex items-center gap-1.5">
+												<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">STT</span>
+												{isTrainer ? (
+													<RankSelect
+														value={s.rank_standard}
+														onChange={(v) => updateRank(s.user_id, { rank_standard: v })}
+														disabled={savingUserId === s.user_id}
+														aria-label={`Standard rank for ${s.full_name}`}
+													/>
+												) : s.rank_standard != null ? (
+													<RankBadge rank={s.rank_standard as Rank} />
+												) : (
+													<span className="text-muted-foreground text-sm">–</span>
+												)}
+											</div>
+											<div className="flex items-center gap-1.5">
+												<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">LAT</span>
+												{isTrainer ? (
+													<RankSelect
+														value={s.rank_latin}
+														onChange={(v) => updateRank(s.user_id, { rank_latin: v })}
+														disabled={savingUserId === s.user_id}
+														aria-label={`Latin rank for ${s.full_name}`}
+													/>
+												) : s.rank_latin != null ? (
+													<RankBadge rank={s.rank_latin as Rank} />
+												) : (
+													<span className="text-muted-foreground text-sm">–</span>
+												)}
+											</div>
+											<div className="text-muted-foreground text-sm min-w-0">
+												{s.partner_name ? (
+													<>Partner: <span className="text-foreground font-medium truncate">{s.partner_name}</span></>
+												) : (
+													<span className="text-muted-foreground">No partner</span>
+												)}
+											</div>
+											<div className="min-w-0">
+												{(s.availability?.length ?? 0) === 0 ? (
+													<span className="text-muted-foreground text-sm">—</span>
+												) : (
+													<ul className="flex flex-wrap gap-1">
+														{(s.availability ?? []).slice(0, 2).map((slot, i) => (
+															<li key={i} className="rounded-md bg-muted/50 border border-border px-1.5 py-0.5 text-xs">
+																{formatSlot(slot)}
+															</li>
+														))}
+														{(s.availability ?? []).length > 2 && (
+															<li className="text-muted-foreground text-xs">+{(s.availability ?? []).length - 2}</li>
+														)}
+													</ul>
+												)}
+											</div>
+											<div className="min-w-0">
+												{studentGroups.length === 0 ? (
+													<span className="text-muted-foreground text-sm">—</span>
+												) : (
+													<DropdownMenu>
+														<DropdownMenuTrigger asChild>
+															<button
+																type="button"
+																className="flex items-center gap-1 text-left text-sm text-foreground hover:underline focus:outline-none focus:ring-2 focus:ring-primary rounded"
+																aria-label={`${studentGroups.length} group(s). Open to view or remove`}
+															>
+																{studentGroups.length <= 2 ? (
+																	<span className="truncate">
+																		{studentGroups.map((g) => g.name).join(", ")}
+																	</span>
+																) : (
+																	<>
+																		<span className="truncate">{studentGroups[0].name}</span>
+																		<span className="text-muted-foreground shrink-0">+{studentGroups.length - 1}</span>
+																	</>
+																)}
+															</button>
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end" className="max-w-[16rem]">
+															{studentGroups.map((g) => (
+																<DropdownMenuItem
+																	key={g.id}
+																	onSelect={(e) => {
+																		e.preventDefault()
+																		if (isTrainer) removeStudentFromGroup(g.id, s.user_id)
+																	}}
+																	disabled={!isTrainer || removingFromGroup === `${g.id}-${s.user_id}`}
+																	className={cn(isTrainer && "flex items-center justify-between gap-2")}
+																>
+																	<span className="truncate">{g.name}</span>
+																	{isTrainer && (
+																		<span className="text-destructive text-xs shrink-0">
+																			{removingFromGroup === `${g.id}-${s.user_id}` ? (
+																				<Loader2 className="size-3.5 animate-spin" />
+																			) : (
+																				"Remove"
+																			)}
+																		</span>
+																	)}
+																</DropdownMenuItem>
+															))}
+														</DropdownMenuContent>
+													</DropdownMenu>
+												)}
+											</div>
 										</div>
-										<div className="text-muted-foreground text-sm tabular-nums">
-											{s.age != null ? `${s.age} ${s.age === 1 ? "year" : "years"} old` : "–"}
-										</div>
-										<div className="flex items-center gap-1.5">
-											<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">STT</span>
-											{isTrainer ? (
-												<RankSelect
-													value={s.rank_standard}
-													onChange={(v) => updateRank(s.user_id, { rank_standard: v })}
-													disabled={savingUserId === s.user_id}
-													aria-label={`Standard rank for ${s.full_name}`}
-												/>
-											) : s.rank_standard != null ? (
-												<RankBadge rank={s.rank_standard as Rank} />
-											) : (
-												<span className="text-muted-foreground text-sm">–</span>
-											)}
-										</div>
-										<div className="flex items-center gap-1.5">
-											<span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">LAT</span>
-											{isTrainer ? (
-												<RankSelect
-													value={s.rank_latin}
-													onChange={(v) => updateRank(s.user_id, { rank_latin: v })}
-													disabled={savingUserId === s.user_id}
-													aria-label={`Latin rank for ${s.full_name}`}
-												/>
-											) : s.rank_latin != null ? (
-												<RankBadge rank={s.rank_latin as Rank} />
-											) : (
-												<span className="text-muted-foreground text-sm">–</span>
-											)}
-										</div>
-										<div className="text-muted-foreground text-sm">
-											{s.partner_name ? (
-												<>Partner: <span className="text-foreground font-medium">{s.partner_name}</span></>
-											) : (
-												<span className="text-muted-foreground">No partner</span>
-											)}
-										</div>
-									</div>
-								))}
+									)
+								})}
 							</div>
 
 							<Sheet open={!!detailStudent} onOpenChange={(open) => !open && setDetailStudent(null)}>
@@ -414,6 +541,64 @@ export default function ClubStudentsPage() {
 												<p className="text-foreground mt-0.5">
 													{detailStudent.partner_name ?? "No partner"}
 												</p>
+											</div>
+											<div>
+												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+													<Clock className="size-3.5" />
+													Availability
+												</p>
+												{(detailStudent.availability?.length ?? 0) === 0 ? (
+													<p className="text-muted-foreground text-sm mt-0.5">No availability set.</p>
+												) : (
+													<ul className="flex flex-wrap gap-2 mt-1.5">
+														{(detailStudent.availability ?? []).map((slot, i) => (
+															<li
+																key={i}
+																className="rounded-md bg-muted/50 border border-border px-2 py-1 text-sm"
+															>
+																{formatSlot(slot)}
+															</li>
+														))}
+													</ul>
+												)}
+											</div>
+											<div>
+												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+													<UsersRound className="size-3.5" />
+													Groups
+												</p>
+												{(() => {
+													const groups = getStudentGroups(detailStudent.user_id)
+													if (groups.length === 0) {
+														return <p className="text-muted-foreground text-sm mt-0.5">Not in any group</p>
+													}
+													return (
+														<ul className="mt-1.5 space-y-1.5">
+															{groups.map((g) => (
+																<li key={g.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+																	<Link href="/app/club/groups" className="text-sm font-medium text-primary hover:underline truncate">
+																		{g.name}
+																	</Link>
+																	{isTrainer && (
+																		<Button
+																			variant="ghost"
+																			size="sm"
+																			className="text-destructive hover:text-destructive shrink-0 h-8"
+																			onClick={() => removeStudentFromGroup(g.id, detailStudent.user_id)}
+																			disabled={removingFromGroup === `${g.id}-${detailStudent.user_id}`}
+																		>
+																			{removingFromGroup === `${g.id}-${detailStudent.user_id}` ? (
+																				<Loader2 className="size-4 animate-spin" />
+																			) : (
+																				"Remove"
+																			)}
+																		</Button>
+																	)}
+																</li>
+															))}
+														</ul>
+													)
+												})()}
 											</div>
 										</div>
 									)}

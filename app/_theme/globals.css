@@ -364,3 +364,25 @@
 	--border: oklch(0.33 0.03 352);
 	--input: oklch(0.26 0.02 350);
 }
+
+/* Cursor pointer on all clickable elements app-wide */
+button,
+a,
+[role="button"],
+[role="menuitem"],
+[role="option"],
+select,
+summary,
+label[for],
+input[type="checkbox"],
+input[type="radio"] {
+	cursor: pointer;
+}
+
+/* Remove focus outline/ring on all inputs app-wide */
+input:focus,
+textarea:focus,
+select:focus {
+	outline: none;
+	box-shadow: none;
+}
