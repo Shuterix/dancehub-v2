@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { solveTimetable, type SolverTarget, type SolverGroupTarget } from "@/lib/timetable-solver"
+import { solveTimetable, type SolverTarget, type SolverGroupTarget, type DistributionPreference } from "@/lib/timetable-solver"
 import type { AvailabilitySlot } from "@/lib/availability"
 
 async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>) {
@@ -92,10 +92,10 @@ export async function POST(
 		.eq("timetable_id", timetableId)
 		.single()
 	const durationMinutes = prefs?.individual_lesson_duration_minutes ?? 45
-	const distribution =
+	const distribution: DistributionPreference =
 		DISTRIBUTION_VALUES.includes(body.distribution as (typeof DISTRIBUTION_VALUES)[number])
-			? body.distribution
-			: (prefs?.distribution as (typeof DISTRIBUTION_VALUES)[number]) ?? "same"
+			? (body.distribution as DistributionPreference)
+			: (prefs?.distribution as DistributionPreference | undefined) ?? "same"
 	const dayStart = timetable.day_start ?? "08:00"
 	const dayEnd = timetable.day_end ?? "22:00"
 
