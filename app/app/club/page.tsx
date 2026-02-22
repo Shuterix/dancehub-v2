@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Copy, Users, UserPlus, GraduationCap, Heart } from "lucide-react"
+import { Copy, Users, UserPlus, GraduationCap, Heart, DoorOpen, BookOpen, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -148,6 +148,24 @@ export default function ClubPage() {
 							<Heart className="size-4" />
 							Couples
 							<CountBadge count={coupleCount} />
+						</Link>
+					</Button>
+					<Button variant="outline" asChild className="gap-2">
+						<Link href="/app/club/rooms">
+							<DoorOpen className="size-4" />
+							Rooms
+						</Link>
+					</Button>
+					<Button variant="outline" asChild className="gap-2">
+						<Link href="/app/club/lesson-types">
+							<BookOpen className="size-4" />
+							Lesson types
+						</Link>
+					</Button>
+					<Button variant="outline" asChild className="gap-2">
+						<Link href="/app/club/timetables">
+							<Calendar className="size-4" />
+							Timetables
 						</Link>
 					</Button>
 				</CardContent>

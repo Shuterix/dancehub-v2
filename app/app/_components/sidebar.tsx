@@ -1,6 +1,6 @@
 "use client"
 
-import { LayoutDashboard, User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock, UsersRound } from "lucide-react"
+import { LayoutDashboard, User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock, UsersRound, DoorOpen, BookOpen, Calendar } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Fragment, useEffect, useRef, useState } from "react"
@@ -23,6 +23,9 @@ const navItems = [
 	{ title: "Trainers", url: "/app/club/trainers", icon: GraduationCap },
 	{ title: "Couples", url: "/app/club/couples", icon: Heart },
 	{ title: "Groups", url: "/app/club/groups", icon: UsersRound },
+	{ title: "Rooms", url: "/app/club/rooms", icon: DoorOpen },
+	{ title: "Lesson types", url: "/app/club/lesson-types", icon: BookOpen },
+	{ title: "Timetables", url: "/app/club/timetables", icon: Calendar },
 ]
 
 function ClubHeader({ clubName }: { clubName: string | null }) {
