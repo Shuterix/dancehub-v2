@@ -14,14 +14,21 @@ export async function GET() {
 		return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 	}
 
-	const { data: profile, error: profileError } = await supabase
+	let { data: profile, error: profileError } = await supabase
 		.from("profiles")
-		.select("full_name, phone, dance_partner, category, rank_standard, rank_latin, date_of_birth, availability, onboarding_completed, role, club_id, created_at, updated_at")
+		.select("full_name, phone, email, dance_partner, category, rank_standard, rank_latin, date_of_birth, availability, onboarding_completed, role, club_id, created_at, updated_at")
 		.eq("id", user.id)
 		.single()
 
 	if (profileError && profileError.code !== "PGRST116") {
 		return NextResponse.json({ error: profileError.message }, { status: 500 })
+	}
+
+	// Backfill profiles.email from auth so club contact dialog can show it (existing users may have null)
+	const authEmail = user.email?.trim() || null
+	if (authEmail && profile && profile.email !== authEmail) {
+		await supabase.from("profiles").update({ email: authEmail }).eq("id", user.id)
+		profile = { ...profile, email: authEmail }
 	}
 
 	return NextResponse.json({
@@ -70,12 +77,14 @@ export async function PATCH(request: Request) {
 		id: string
 		full_name?: string
 		phone?: string | null
+		email?: string | null
 		dance_partner?: string | null
 		date_of_birth?: string | null
 		availability?: { day: string; start: string; end: string }[]
 	} = { id: user.id }
 	if (typeof full_name === "string") profilePayload.full_name = full_name.trim()
 	if (phone !== undefined) profilePayload.phone = typeof phone === "string" ? (phone.trim() || null) : null
+	if (email !== undefined) profilePayload.email = typeof email === "string" ? (email.trim() || null) : null
 	if (dance_partner !== undefined) profilePayload.dance_partner = typeof dance_partner === "string" ? (dance_partner.trim() || null) : null
 	if (date_of_birth !== undefined) {
 		const dob = typeof date_of_birth === "string" ? date_of_birth.trim() || null : null

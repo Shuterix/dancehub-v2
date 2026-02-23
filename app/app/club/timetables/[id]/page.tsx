@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { ChevronLeft, Calendar, Loader2, UsersRound, GraduationCap, Clock, Sparkles, CalendarDays, Settings, User, BookOpen } from "lucide-react"
+import { ChevronLeft, Calendar, Loader2, UsersRound, GraduationCap, Clock, Sparkles, CalendarDays, Settings, User, BookOpen, Power, PowerOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -157,6 +157,7 @@ export default function TimetableDetailPage({
 	const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set())
 	type ShortfallItem = { target_id?: string; group_id?: string; group_lesson_type_id?: string; desired_lessons_count: number; actual_count: number }
 	const [shortfalls, setShortfalls] = useState<ShortfallItem[]>([])
+	const [togglingActive, setTogglingActive] = useState(false)
 
 	useEffect(() => {
 		params.then((p) => setId(p.id))
@@ -375,6 +376,29 @@ export default function TimetableDetailPage({
 		})
 	}
 
+	async function handleToggleActive() {
+		if (!id || togglingActive) return
+		const nextActive = !timetable.is_active
+		setTogglingActive(true)
+		try {
+			const res = await fetch(`/api/club/timetables/${id}`, {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ is_active: nextActive }),
+			})
+			const json = await res.json().catch(() => ({}))
+			if (!res.ok) {
+				toast.error(json.error ?? "Failed to update timetable")
+				return
+			}
+			toast.success(nextActive ? "Timetable enabled" : "Timetable disabled. Lessons removed; you can generate again with the same settings.")
+			await load()
+			await loadLessons()
+		} finally {
+			setTogglingActive(false)
+		}
+	}
+
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between gap-2">
@@ -394,10 +418,23 @@ export default function TimetableDetailPage({
 						</p>
 					</div>
 				</div>
-				<Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="shrink-0">
-					<Settings className="size-4 sm:mr-1" />
-					<span className="hidden sm:inline">Settings</span>
-				</Button>
+				<div className="flex shrink-0 gap-1.5">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={handleToggleActive}
+						disabled={togglingActive}
+						className={timetable.is_active ? "text-amber-600 hover:text-amber-700" : ""}
+						title={timetable.is_active ? "Disable timetable (removes lessons; you can generate again later)" : "Enable timetable"}
+					>
+						{togglingActive ? <Loader2 className="size-4 animate-spin sm:mr-1" /> : timetable.is_active ? <PowerOff className="size-4 sm:mr-1" /> : <Power className="size-4 sm:mr-1" />}
+						<span className="hidden sm:inline">{timetable.is_active ? "Disable" : "Enable"}</span>
+					</Button>
+					<Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="shrink-0">
+						<Settings className="size-4 sm:mr-1" />
+						<span className="hidden sm:inline">Settings</span>
+					</Button>
+				</div>
 			</div>
 
 				<div className="flex flex-col gap-2">

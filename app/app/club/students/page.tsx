@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock, Search } from "lucide-react"
+import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock, Search, Phone, ChevronRight, Mail, Copy } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,10 +30,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import { cn } from "@/lib/utils"
+import { ContactDialog, type ContactInfo } from "@/app/app/club/_components/contact-dialog"
 
 type GroupSummary = { id: string; name: string; student_ids: string[]; couple_ids: string[] }
 
-const STUDENTS_GRID = "grid grid-cols-[1fr_6rem_6rem_6rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-3 items-center"
+const STUDENTS_GRID = "grid grid-cols-[1fr_8rem_6rem_6rem_6rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-3 items-center"
 
 const RANKS = ["E", "D", "C", "B", "A", "S"] as const
 type Rank = (typeof RANKS)[number]
@@ -109,6 +110,8 @@ function RankSelect({
 type Student = {
 	user_id: string
 	full_name: string
+	phone: string | null
+	email: string | null
 	rank_standard: string | null
 	rank_latin: string | null
 	age: number | null
@@ -136,6 +139,9 @@ export default function ClubStudentsPage() {
 	const [ageMax, setAgeMax] = useState<string>("")
 	const [filterRankStandard, setFilterRankStandard] = useState<string>("")
 	const [filterRankLatin, setFilterRankLatin] = useState<string>("")
+	const [contactDialogOpen, setContactDialogOpen] = useState(false)
+	const [contactDialogTitle, setContactDialogTitle] = useState("")
+	const [contactDialogContact, setContactDialogContact] = useState<ContactInfo>({ phone: null, email: null })
 
 	const filteredStudents = useMemo(() => {
 		const list = data?.allStudents ?? []
@@ -396,12 +402,14 @@ export default function ClubStudentsPage() {
 											<button
 												type="button"
 												onClick={() => setDetailStudent(s)}
-												className="min-w-0 flex-1 cursor-pointer text-left font-medium"
+												className="min-w-0 flex-1 cursor-pointer text-left"
 											>
-												{s.full_name}
-												{studentGroups.length > 0 && (
-													<span className="ml-2 text-muted-foreground text-xs font-normal">
-														{studentGroups.length} group{studentGroups.length !== 1 ? "s" : ""}
+												<span className="font-medium">{s.full_name}</span>
+												{(s.phone || studentGroups.length > 0) && (
+													<span className="text-muted-foreground text-xs font-normal block mt-0.5">
+														{s.phone && <span className="inline-flex items-center gap-1"><Phone className="size-3" />{s.phone}</span>}
+														{s.phone && studentGroups.length > 0 && " · "}
+														{studentGroups.length > 0 && `${studentGroups.length} group${studentGroups.length !== 1 ? "s" : ""}`}
 													</span>
 												)}
 											</button>
@@ -423,6 +431,10 @@ export default function ClubStudentsPage() {
 							<div className="hidden lg:block space-y-3">
 								<div className={cn(STUDENTS_GRID, "px-3 pb-1 text-muted-foreground text-xs font-medium uppercase tracking-wide")}>
 									<span>Name</span>
+									<span className="flex items-center gap-1">
+										<Phone className="size-3.5" />
+										Contact
+									</span>
 									<span>Age</span>
 									<span>STT</span>
 									<span>LAT</span>
@@ -445,6 +457,21 @@ export default function ClubStudentsPage() {
 										>
 											<div className="min-w-0">
 												<span className="font-medium">{s.full_name}</span>
+											</div>
+											<div className="min-w-0">
+												<Button
+													variant="outline"
+													size="sm"
+													className="h-8 gap-1.5 text-xs"
+													onClick={() => {
+														setContactDialogTitle(s.full_name)
+														setContactDialogContact({ phone: s.phone ?? null, email: s.email ?? null })
+														setContactDialogOpen(true)
+													}}
+												>
+													<Phone className="size-3.5" />
+													Contact
+												</Button>
 											</div>
 											<div className="text-muted-foreground text-sm tabular-nums">
 												{s.age != null ? `${s.age} ${s.age === 1 ? "year" : "years"} old` : "–"}
@@ -486,20 +513,29 @@ export default function ClubStudentsPage() {
 													<span className="text-muted-foreground">No partner</span>
 												)}
 											</div>
-											<div className="min-w-0">
+											<div className="min-w-0 flex flex-wrap items-center gap-1.5">
 												{(s.availability?.length ?? 0) === 0 ? (
 													<span className="text-muted-foreground text-sm">—</span>
 												) : (
-													<ul className="flex flex-wrap gap-1">
+													<>
 														{(s.availability ?? []).slice(0, 2).map((slot, i) => (
-															<li key={i} className="rounded-md bg-muted/50 border border-border px-1.5 py-0.5 text-xs">
+															<span key={i} className="rounded-md bg-muted/50 border border-border px-1.5 py-0.5 text-xs">
 																{formatSlot(slot)}
-															</li>
+															</span>
 														))}
-														{(s.availability ?? []).length > 2 && (
-															<li className="text-muted-foreground text-xs">+{(s.availability ?? []).length - 2}</li>
-														)}
-													</ul>
+														{(s.availability ?? []).length > 2 ? (
+															<Button
+																variant="ghost"
+																size="sm"
+																className="h-7 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+																onClick={() => setDetailStudent(s)}
+																aria-label="View full availability"
+															>
+																<ChevronRight className="size-3.5" />
+																Expand
+															</Button>
+														) : null}
+													</>
 												)}
 											</div>
 											<div className="min-w-0">
@@ -564,6 +600,57 @@ export default function ClubStudentsPage() {
 									</SheetHeader>
 									{detailStudent && (
 										<div className="mt-6 space-y-4">
+											<div>
+												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Contact</p>
+												<div className="mt-1.5 space-y-2">
+													{detailStudent.phone ? (
+														<div className="flex flex-wrap items-center gap-2">
+															<span className="text-foreground text-sm">{detailStudent.phone}</span>
+															<Button variant="outline" size="icon" className="h-8 w-8 shrink-0" asChild>
+																<a href={`tel:${detailStudent.phone.replace(/\s/g, "")}`} aria-label="Call">
+																	<Phone className="size-3.5" />
+																</a>
+															</Button>
+															<Button
+																variant="outline"
+																size="icon"
+																className="h-8 w-8 shrink-0"
+																aria-label="Copy phone"
+																onClick={() => {
+																	void navigator.clipboard.writeText(detailStudent.phone ?? "").then(() => toast.success("Contact copied"))
+																}}
+															>
+																<Copy className="size-3.5" />
+															</Button>
+														</div>
+													) : (
+														<span className="text-muted-foreground text-sm">—</span>
+													)}
+													{detailStudent.email ? (
+														<div className="flex flex-wrap items-center gap-2">
+															<span className="text-foreground text-sm break-all">{detailStudent.email}</span>
+															<Button variant="outline" size="icon" className="h-8 w-8 shrink-0" asChild>
+																<a href={`mailto:${detailStudent.email}`} aria-label="Email">
+																	<Mail className="size-3.5" />
+																</a>
+															</Button>
+															<Button
+																variant="outline"
+																size="icon"
+																className="h-8 w-8 shrink-0"
+																aria-label="Copy email"
+																onClick={() => {
+																	void navigator.clipboard.writeText(detailStudent.email ?? "").then(() => toast.success("Contact copied"))
+																}}
+															>
+																<Copy className="size-3.5" />
+															</Button>
+														</div>
+													) : (
+														<span className="text-muted-foreground text-sm">—</span>
+													)}
+												</div>
+											</div>
 											<div>
 												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Age</p>
 												<p className="text-foreground mt-0.5">
@@ -680,6 +767,12 @@ export default function ClubStudentsPage() {
 									)}
 								</SheetContent>
 							</Sheet>
+							<ContactDialog
+								open={contactDialogOpen}
+								onOpenChange={setContactDialogOpen}
+								title={contactDialogTitle}
+								contact={contactDialogContact}
+							/>
 						</>
 					)}
 				</CardContent>

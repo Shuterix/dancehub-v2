@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { GraduationCap, Loader2, ChevronLeft, MoreVertical, UserPlus, Copy, Check, Trash2, Search } from "lucide-react"
+import { GraduationCap, Loader2, ChevronLeft, MoreVertical, UserPlus, Copy, Check, Trash2, Search, Phone, Clock, ChevronRight, Mail } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,8 +32,10 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { ContactDialog, type ContactInfo } from "@/app/app/club/_components/contact-dialog"
+import { formatSlot, type AvailabilitySlot } from "@/lib/availability"
 
-const TRAINERS_GRID = "grid grid-cols-[1fr_7rem_7rem_7rem] gap-3 items-center"
+const TRAINERS_GRID = "grid grid-cols-[1fr_8rem_7rem_7rem_7rem_minmax(0,1.5fr)] gap-3 items-center"
 
 const RANKS = ["E", "D", "C", "B", "A", "S"] as const
 type Rank = (typeof RANKS)[number]
@@ -63,11 +65,14 @@ function RankBadge({ rank }: { rank: Rank }) {
 type Trainer = {
 	user_id: string
 	full_name: string
+	phone: string | null
+	email: string | null
 	rank_standard: string | null
 	rank_latin: string | null
 	age: number | null
 	is_external?: boolean
 	login_code?: string
+	availability?: AvailabilitySlot[]
 }
 
 type ClubData = {
@@ -96,6 +101,9 @@ export default function ClubTrainersPage() {
 	const [externalOnly, setExternalOnly] = useState(false)
 	const [filterRankStandard, setFilterRankStandard] = useState("")
 	const [filterRankLatin, setFilterRankLatin] = useState("")
+	const [contactDialogOpen, setContactDialogOpen] = useState(false)
+	const [contactDialogTitle, setContactDialogTitle] = useState("")
+	const [contactDialogContact, setContactDialogContact] = useState<ContactInfo>({ phone: null, email: null })
 
 	const filteredTrainers = useMemo(() => {
 		const list = data?.allTrainers ?? []
@@ -361,12 +369,17 @@ export default function ClubTrainersPage() {
 										<button
 											type="button"
 											onClick={() => setDetailTrainer(t)}
-											className="min-w-0 flex-1 cursor-pointer text-left font-medium"
+											className="min-w-0 flex-1 cursor-pointer text-left"
 										>
-											<span>{t.full_name}</span>
+											<span className="font-medium">{t.full_name}</span>
 											{t.is_external && (
 												<span className="ml-1.5 inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
 													External
+												</span>
+											)}
+											{t.phone && (
+												<span className="text-muted-foreground text-xs font-normal flex items-center gap-1 mt-0.5">
+													<Phone className="size-3" />{t.phone}
 												</span>
 											)}
 										</button>
@@ -400,9 +413,17 @@ export default function ClubTrainersPage() {
 							<div className="hidden space-y-3 lg:block">
 								<div className={cn(TRAINERS_GRID, "px-3 pb-1 text-muted-foreground text-xs font-medium uppercase tracking-wide")}>
 									<span>Name</span>
+									<span className="flex items-center gap-1">
+										<Phone className="size-3.5" />
+										Contact
+									</span>
 									<span>Age</span>
 									<span>STT</span>
 									<span>LAT</span>
+									<span className="flex items-center gap-1">
+										<Clock className="size-3.5" />
+										Availability
+									</span>
 								</div>
 								{filteredTrainers.map((t) => (
 									<div
@@ -431,6 +452,21 @@ export default function ClubTrainersPage() {
 												</>
 											)}
 										</div>
+										<div className="min-w-0">
+											<Button
+												variant="outline"
+												size="sm"
+												className="h-8 gap-1.5 text-xs"
+												onClick={() => {
+													setContactDialogTitle(t.full_name)
+													setContactDialogContact({ phone: t.phone ?? null, email: t.email ?? null })
+													setContactDialogOpen(true)
+												}}
+											>
+												<Phone className="size-3.5" />
+												Contact
+											</Button>
+										</div>
 										<div className="text-muted-foreground text-sm tabular-nums">
 											{t.age != null ? `${t.age} ${t.age === 1 ? "year" : "years"} old` : "–"}
 										</div>
@@ -454,6 +490,31 @@ export default function ClubTrainersPage() {
 												<span className="text-muted-foreground text-sm">–</span>
 											)}
 										</div>
+										<div className="min-w-0 flex flex-wrap items-center gap-1.5">
+											{(t.availability?.length ?? 0) === 0 ? (
+												<span className="text-muted-foreground text-sm">—</span>
+											) : (
+												<>
+													{(t.availability ?? []).slice(0, 2).map((slot, i) => (
+														<span key={i} className="rounded-md bg-muted/50 border border-border px-1.5 py-0.5 text-xs">
+															{formatSlot(slot)}
+														</span>
+													))}
+													{(t.availability ?? []).length > 2 ? (
+														<Button
+															variant="ghost"
+															size="sm"
+															className="h-7 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+															onClick={() => setDetailTrainer(t)}
+															aria-label="View full availability"
+														>
+															<ChevronRight className="size-3.5" />
+															Expand
+														</Button>
+													) : null}
+												</>
+											)}
+										</div>
 									</div>
 								))}
 							</div>
@@ -473,6 +534,57 @@ export default function ClubTrainersPage() {
 									{detailTrainer && (
 										<div className="mt-6 flex flex-1 flex-col gap-6">
 											<div className="space-y-4">
+												<div>
+													<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Contact</p>
+													<div className="mt-1.5 space-y-2">
+														{detailTrainer.phone ? (
+															<div className="flex flex-wrap items-center gap-2">
+																<span className="text-foreground text-sm">{detailTrainer.phone}</span>
+																<Button variant="outline" size="icon" className="h-8 w-8 shrink-0" asChild>
+																	<a href={`tel:${detailTrainer.phone.replace(/\s/g, "")}`} aria-label="Call">
+																		<Phone className="size-3.5" />
+																	</a>
+																</Button>
+																<Button
+																	variant="outline"
+																	size="icon"
+																	className="h-8 w-8 shrink-0"
+																	aria-label="Copy phone"
+																	onClick={() => {
+																		void navigator.clipboard.writeText(detailTrainer.phone ?? "").then(() => toast.success("Contact copied"))
+																	}}
+																>
+																	<Copy className="size-3.5" />
+																</Button>
+															</div>
+														) : (
+															<span className="text-muted-foreground text-sm">—</span>
+														)}
+														{detailTrainer.email ? (
+															<div className="flex flex-wrap items-center gap-2">
+																<span className="text-foreground text-sm break-all">{detailTrainer.email}</span>
+																<Button variant="outline" size="icon" className="h-8 w-8 shrink-0" asChild>
+																	<a href={`mailto:${detailTrainer.email}`} aria-label="Email">
+																		<Mail className="size-3.5" />
+																	</a>
+																</Button>
+																<Button
+																	variant="outline"
+																	size="icon"
+																	className="h-8 w-8 shrink-0"
+																	aria-label="Copy email"
+																	onClick={() => {
+																		void navigator.clipboard.writeText(detailTrainer.email ?? "").then(() => toast.success("Contact copied"))
+																	}}
+																>
+																	<Copy className="size-3.5" />
+																</Button>
+															</div>
+														) : (
+															<span className="text-muted-foreground text-sm">—</span>
+														)}
+													</div>
+												</div>
 												{detailTrainer.is_external && detailTrainer.login_code && (
 													<div>
 														<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Access code</p>
@@ -513,6 +625,26 @@ export default function ClubTrainersPage() {
 														)}
 													</div>
 												</div>
+												<div>
+													<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+														<Clock className="size-3.5" />
+														Availability
+													</p>
+													{(detailTrainer.availability?.length ?? 0) === 0 ? (
+														<p className="text-muted-foreground text-sm mt-0.5">No availability set.</p>
+													) : (
+														<ul className="flex flex-wrap gap-2 mt-1.5">
+															{(detailTrainer.availability ?? []).map((slot, i) => (
+																<li
+																	key={i}
+																	className="rounded-md bg-muted/50 border border-border px-2 py-1 text-sm"
+																>
+																	{formatSlot(slot)}
+																</li>
+															))}
+														</ul>
+													)}
+												</div>
 											</div>
 											{data.isTrainer && (
 												<div className="mt-auto border-t border-border pt-4">
@@ -530,6 +662,12 @@ export default function ClubTrainersPage() {
 									)}
 								</SheetContent>
 							</Sheet>
+							<ContactDialog
+								open={contactDialogOpen}
+								onOpenChange={setContactDialogOpen}
+								title={contactDialogTitle}
+								contact={contactDialogContact}
+							/>
 						</>
 					)}
 				</CardContent>

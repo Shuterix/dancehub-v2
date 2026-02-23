@@ -15,17 +15,35 @@ import {
 	BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { cn } from "@/lib/utils"
 
-const navItems = [
-	{ title: "My lessons", url: "/app/my-lessons", icon: BookMarked },
-	{ title: "Club", url: "/app/club", icon: Users },
-	{ title: "Students", url: "/app/club/students", icon: UserPlus },
-	{ title: "Trainers", url: "/app/club/trainers", icon: GraduationCap },
-	{ title: "Couples", url: "/app/club/couples", icon: Heart },
-	{ title: "Groups", url: "/app/club/groups", icon: UsersRound },
-	{ title: "Rooms", url: "/app/club/rooms", icon: DoorOpen },
-	{ title: "Lesson types", url: "/app/club/lesson-types", icon: BookOpen },
-	{ title: "Timetables", url: "/app/club/timetables", icon: Calendar },
+type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> }
+
+const navSections: { label: string; items: NavItem[] }[] = [
+	{
+		label: "Lessons",
+		items: [
+			{ title: "My lessons", url: "/app/my-lessons", icon: BookMarked },
+			{ title: "Timetables", url: "/app/club/timetables", icon: Calendar },
+		],
+	},
+	{
+		label: "Club setup",
+		items: [
+			{ title: "Club", url: "/app/club", icon: Users },
+			{ title: "Rooms", url: "/app/club/rooms", icon: DoorOpen },
+			{ title: "Lesson types", url: "/app/club/lesson-types", icon: BookOpen },
+		],
+	},
+	{
+		label: "People",
+		items: [
+			{ title: "Students", url: "/app/club/students", icon: UserPlus },
+			{ title: "Trainers", url: "/app/club/trainers", icon: GraduationCap },
+			{ title: "Couples", url: "/app/club/couples", icon: Heart },
+			{ title: "Groups", url: "/app/club/groups", icon: UsersRound },
+		],
+	},
 ]
 
 function ClubHeader({ clubName }: { clubName: string | null }) {
@@ -44,24 +62,39 @@ function ClubHeader({ clubName }: { clubName: string | null }) {
 function NavLinks({ onLinkClick }: { onLinkClick?: () => void }) {
 	const pathname = usePathname()
 	return (
-		<nav className="flex flex-col gap-1.5">
-			{navItems.map((item) => {
-				const isActive = pathname === item.url
-				return (
-					<Link
-						key={item.title}
-						href={item.url}
-						onClick={onLinkClick}
-						className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${isActive
-								? "bg-sidebar-accent text-sidebar-accent-foreground"
-								: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-							}`}
-					>
-						<item.icon className="size-4 shrink-0" />
-						<span>{item.title}</span>
-					</Link>
-				)
-			})}
+		<nav className="flex flex-col gap-0">
+			{navSections.map((section, index) => (
+				<div
+					key={section.label}
+					className={cn(
+						"flex flex-col gap-1.5",
+						index > 0 && "border-t border-sidebar-border pt-4 mt-4"
+					)}
+				>
+					<p className="px-3 text-xs font-medium uppercase tracking-wider text-sidebar-foreground/60">
+						{section.label}
+					</p>
+					<div className="flex flex-col gap-1">
+						{section.items.map((item) => {
+							const isActive = pathname === item.url
+							return (
+								<Link
+									key={item.title}
+									href={item.url}
+									onClick={onLinkClick}
+									className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${isActive
+											? "bg-sidebar-accent text-sidebar-accent-foreground"
+											: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+										}`}
+								>
+									<item.icon className="size-4 shrink-0" />
+									<span>{item.title}</span>
+								</Link>
+							)
+						})}
+					</div>
+				</div>
+			))}
 		</nav>
 	)
 }
@@ -340,14 +373,15 @@ export function DashboardSidebarLayout({
 					onClick={() => setMobileOpen(false)}
 				/>
 			)}
-			<div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden sm:mr-4">
+			{/* Single scroll region: entire right column scrolls (header + main) to avoid double scrollbars */}
+			<div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-y-auto overflow-x-hidden sm:mr-4">
 				<header className="flex shrink-0 flex-row items-center gap-2 border-border bg-background px-4 py-3 md:px-6 sm:my-4 sm:rounded-xl md:min-h-14">
 					<DashboardSidebarTrigger onOpen={() => setMobileOpen(true)} />
 					<div className="min-w-0 flex-1">
 						<DashboardBreadcrumbs />
 					</div>
 				</header>
-				<main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-t-xl m-4">{children}</main>
+				<main className="min-w-0 flex-1 rounded-t-xl m-4">{children}</main>
 			</div>
 		</div>
 		</BreadcrumbLastSegmentContext.Provider>

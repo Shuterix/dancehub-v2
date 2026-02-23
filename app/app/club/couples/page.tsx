@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, UserPlus, Loader2, ChevronLeft, Trash2, Clock, MoreVertical, UsersRound, Search } from "lucide-react"
+import { Users, UserPlus, Loader2, ChevronLeft, Trash2, Clock, MoreVertical, UsersRound, Search, Phone, Mail, Copy } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -39,7 +39,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { intersectAvailability, formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import { cn } from "@/lib/utils"
-
 type GroupSummary = { id: string; name: string; student_ids: string[]; couple_ids: string[] }
 
 const COUPLES_GRID = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)] gap-4 items-center"
@@ -83,6 +82,10 @@ type Couple = {
 	partner2_user_id: string | null
 	partner1_name: string | null
 	partner2_name: string | null
+	partner1_phone: string | null
+	partner2_phone: string | null
+	partner1_email: string | null
+	partner2_email: string | null
 	partner1_availability: AvailabilitySlot[]
 	partner2_availability: AvailabilitySlot[]
 	/** Stored in DB (intersection of both partners). */
@@ -110,7 +113,6 @@ export default function ClubCouplesPage() {
 	const [detailCouple, setDetailCouple] = useState<Couple | null>(null)
 	const [removingFromGroup, setRemovingFromGroup] = useState<string | null>(null)
 	const [searchQuery, setSearchQuery] = useState("")
-
 	const filteredCouples = useMemo(() => {
 		const list = data?.couples ?? []
 		const q = searchQuery.trim().toLowerCase()
@@ -618,6 +620,96 @@ export default function ClubCouplesPage() {
 												<p className="text-foreground mt-0.5">
 													{detailCouple.partner1_name ?? "—"} & {detailCouple.partner2_name ?? "—"}
 												</p>
+											</div>
+											<div>
+												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+													<Phone className="size-3.5" />
+													Contact
+												</p>
+												<div className="mt-1.5 space-y-4">
+													<div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+														<p className="font-medium text-sm">{detailCouple.partner1_name ?? "Partner 1"}</p>
+														{detailCouple.partner1_phone ? (
+															<div className="flex flex-wrap items-center gap-2">
+																<span className="text-foreground text-sm">{detailCouple.partner1_phone}</span>
+																<Button variant="outline" size="icon" className="h-7 w-7 shrink-0" asChild>
+																	<a href={`tel:${detailCouple.partner1_phone.replace(/\s/g, "")}`} aria-label="Call"><Phone className="size-3" /></a>
+																</Button>
+																<Button
+																	variant="outline"
+																	size="icon"
+																	className="h-7 w-7 shrink-0"
+																	aria-label="Copy phone"
+																	onClick={() => {
+																		void navigator.clipboard.writeText(detailCouple.partner1_phone ?? "").then(() => toast.success("Contact copied"))
+																	}}
+																>
+																	<Copy className="size-3" />
+																</Button>
+															</div>
+														) : <span className="text-muted-foreground text-sm">—</span>}
+														{detailCouple.partner1_email ? (
+															<div className="flex flex-wrap items-center gap-2">
+																<span className="text-foreground text-sm break-all">{detailCouple.partner1_email}</span>
+																<Button variant="outline" size="icon" className="h-7 w-7 shrink-0" asChild>
+																	<a href={`mailto:${detailCouple.partner1_email}`} aria-label="Email"><Mail className="size-3" /></a>
+																</Button>
+																<Button
+																	variant="outline"
+																	size="icon"
+																	className="h-7 w-7 shrink-0"
+																	aria-label="Copy email"
+																	onClick={() => {
+																		void navigator.clipboard.writeText(detailCouple.partner1_email ?? "").then(() => toast.success("Contact copied"))
+																	}}
+																>
+																	<Copy className="size-3" />
+																</Button>
+															</div>
+														) : <span className="text-muted-foreground text-sm">—</span>}
+													</div>
+													<div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+														<p className="font-medium text-sm">{detailCouple.partner2_name ?? "Partner 2"}</p>
+														{detailCouple.partner2_phone ? (
+															<div className="flex flex-wrap items-center gap-2">
+																<span className="text-foreground text-sm">{detailCouple.partner2_phone}</span>
+																<Button variant="outline" size="icon" className="h-7 w-7 shrink-0" asChild>
+																	<a href={`tel:${detailCouple.partner2_phone.replace(/\s/g, "")}`} aria-label="Call"><Phone className="size-3" /></a>
+																</Button>
+																<Button
+																	variant="outline"
+																	size="icon"
+																	className="h-7 w-7 shrink-0"
+																	aria-label="Copy phone"
+																	onClick={() => {
+																		void navigator.clipboard.writeText(detailCouple.partner2_phone ?? "").then(() => toast.success("Contact copied"))
+																	}}
+																>
+																	<Copy className="size-3" />
+																</Button>
+															</div>
+														) : <span className="text-muted-foreground text-sm">—</span>}
+														{detailCouple.partner2_email ? (
+															<div className="flex flex-wrap items-center gap-2">
+																<span className="text-foreground text-sm break-all">{detailCouple.partner2_email}</span>
+																<Button variant="outline" size="icon" className="h-7 w-7 shrink-0" asChild>
+																	<a href={`mailto:${detailCouple.partner2_email}`} aria-label="Email"><Mail className="size-3" /></a>
+																</Button>
+																<Button
+																	variant="outline"
+																	size="icon"
+																	className="h-7 w-7 shrink-0"
+																	aria-label="Copy email"
+																	onClick={() => {
+																		void navigator.clipboard.writeText(detailCouple.partner2_email ?? "").then(() => toast.success("Contact copied"))
+																	}}
+																>
+																	<Copy className="size-3" />
+																</Button>
+															</div>
+														) : <span className="text-muted-foreground text-sm">—</span>}
+													</div>
+												</div>
 											</div>
 											<div>
 												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">

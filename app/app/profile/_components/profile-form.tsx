@@ -7,6 +7,14 @@ import Link from "next/link"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -59,6 +67,12 @@ export function ProfileForm() {
 	const [saving, setSaving] = useState(false)
 	const [apiError, setApiError] = useState<string | null>(null)
 	const [success, setSuccess] = useState(false)
+	const [dirtyCards, setDirtyCards] = useState({ student: false, phone: false, dob: false })
+	const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+	const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
+	const [pendingNavigateHref, setPendingNavigateHref] = useState<string | null>(null)
+
+	const isDirty = dirtyCards.student || dirtyCards.phone || dirtyCards.dob
 
 	const [fullName, setFullName] = useState("")
 	const [email, setEmail] = useState("")
@@ -77,7 +91,17 @@ export function ProfileForm() {
 	const [saveHighlight, setSaveHighlight] = useState(false)
 
 	const isDirtyRef = useRef(false)
-	const saveSectionRef = useRef<HTMLDivElement>(null)
+	const saveInCardRef = useRef<HTMLDivElement>(null)
+	const phoneCardSaveRef = useRef<HTMLDivElement>(null)
+	const dobCardSaveRef = useRef<HTMLDivElement>(null)
+	// Snapshot of last loaded/saved values for Cancel
+	const savedSnapshotRef = useRef<{
+		fullName: string
+		email: string
+		phone: string
+		dateOfBirth: string
+		dancePartner: string
+	} | null>(null)
 
 	useEffect(() => {
 		async function load() {
@@ -106,6 +130,7 @@ export function ProfileForm() {
 				} | null
 			}
 			const { user, profile } = data
+			const meta = user.user_metadata as Record<string, unknown> | undefined
 			setEmail(user.email ?? "")
 			setCreatedAt(user.created_at ?? null)
 			if (profile) {
@@ -120,7 +145,6 @@ export function ProfileForm() {
 				setProfileRole(profile.role === "student" || profile.role === "trainer" ? profile.role : null)
 				setAvailability(Array.isArray(profile.availability) ? profile.availability : [])
 			} else {
-				const meta = user.user_metadata as Record<string, unknown> | undefined
 				setFullName((meta?.full_name as string) ?? "")
 				setPhone((meta?.phone as string) ?? "")
 				setDateOfBirth((meta?.date_of_birth as string) ?? "")
@@ -129,6 +153,13 @@ export function ProfileForm() {
 				setRankLatin(isValidCategory(meta?.rank_latin as string) ? (meta?.rank_latin as Category) : null)
 				setProfileRole(meta?.role === "student" || meta?.role === "trainer" ? (meta?.role as "student" | "trainer") : null)
 				setAvailability([])
+			}
+			savedSnapshotRef.current = {
+				fullName: profile?.full_name ?? (meta?.full_name as string) ?? "",
+				email: user.email ?? "",
+				phone: profile?.phone ?? (meta?.phone as string) ?? "",
+				dateOfBirth: profile?.date_of_birth ?? (meta?.date_of_birth as string) ?? "",
+				dancePartner: profile?.dance_partner ?? (meta?.dance_partner as string) ?? "",
 			}
 			setLoading(false)
 		}
@@ -159,8 +190,7 @@ export function ProfileForm() {
 		return ok
 	}
 
-	async function handleSubmit(e: React.FormEvent) {
-		e.preventDefault()
+	async function performSubmit() {
 		setApiError(null)
 		setSuccess(false)
 		if (!validate()) return
@@ -181,6 +211,15 @@ export function ProfileForm() {
 			if (!res.ok) throw new Error(json.error ?? "Failed to save")
 			setSuccess(true)
 			isDirtyRef.current = false
+			setDirtyCards({ student: false, phone: false, dob: false })
+			savedSnapshotRef.current = {
+				fullName: fullName.trim(),
+				email: email.trim(),
+				phone: phone.trim(),
+				dateOfBirth: dateOfBirth.trim(),
+				dancePartner: profileRole === "trainer" ? dancePartner.trim() : savedSnapshotRef.current?.dancePartner ?? "",
+			}
+			setConfirmDialogOpen(false)
 			toast.success("Profile saved.")
 			router.refresh()
 		} catch (err) {
@@ -190,16 +229,71 @@ export function ProfileForm() {
 		}
 	}
 
-	function markDirty() {
-		isDirtyRef.current = true
+	function handleSubmit(e: React.FormEvent) {
+		e.preventDefault()
+		if (isDirty) setConfirmDialogOpen(true)
 	}
 
-	function handleBlurScrollToSave() {
-		if (!isDirtyRef.current || !saveSectionRef.current) return
+	function markDirty(card: "student" | "phone" | "dob") {
+		isDirtyRef.current = true
+		setDirtyCards((prev) => ({ ...prev, [card]: true }))
+	}
+
+	function openConfirmDialog() {
+		if (isDirty) setConfirmDialogOpen(true)
+	}
+
+	function handleBlurScrollToSave(ref: React.RefObject<HTMLDivElement | null>) {
+		if (!isDirtyRef.current || !ref?.current) return
 		if (typeof window !== "undefined" && !window.matchMedia("(min-width: 1024px)").matches) return
-		saveSectionRef.current.scrollIntoView({ behavior: "smooth", block: "center" })
+		ref.current.scrollIntoView({ behavior: "smooth", block: "center" })
 		setSaveHighlight(true)
 		setTimeout(() => setSaveHighlight(false), 2500)
+	}
+
+	// Warn when leaving the page (refresh/close) with unsaved changes
+	useEffect(() => {
+		if (!isDirty) return
+		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+			e.preventDefault()
+		}
+		window.addEventListener("beforeunload", handleBeforeUnload)
+		return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+	}, [isDirty])
+
+	// Warn when navigating to another route with unsaved changes
+	useEffect(() => {
+		if (!isDirty) return
+		const handleClick = (e: MouseEvent) => {
+			const target = e.target as HTMLElement
+			const anchor = target.closest("a[href]") as HTMLAnchorElement | null
+			if (!anchor?.href) return
+			try {
+				const url = new URL(anchor.href)
+				if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return
+			} catch {
+				return
+			}
+			const href = anchor.getAttribute("href")
+			if (!href || !href.startsWith("/")) return
+			e.preventDefault()
+			setPendingNavigateHref(href)
+			setLeaveDialogOpen(true)
+		}
+		document.addEventListener("click", handleClick, true)
+		return () => document.removeEventListener("click", handleClick, true)
+	}, [isDirty, router])
+
+	function handleLeaveWithoutSaving() {
+		const href = pendingNavigateHref
+		setLeaveDialogOpen(false)
+		setPendingNavigateHref(null)
+		if (href) router.push(href)
+	}
+
+	function handleStay() {
+		setLeaveDialogOpen(false)
+		setPendingNavigateHref(null)
 	}
 
 	if (loading) {
@@ -248,23 +342,97 @@ export function ProfileForm() {
 
 	return (
 		<form id="profile-form" onSubmit={handleSubmit} className="relative">
-			{/* Sticky Save bar: visible on mobile/tablet so users don't have to scroll to the bottom */}
-			<div className="sticky top-0 z-10 flex lg:hidden -mx-4 px-4 py-3 mb-4 rounded-b-xl border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 shadow-sm">
-				<div className="flex w-full items-center justify-end gap-2">
-					{apiError && <span className="text-destructive text-sm truncate mr-auto">{apiError}</span>}
-					{success && <span className="text-emerald-600 text-sm dark:text-emerald-400 mr-auto">Saved.</span>}
-					<Button type="submit" disabled={saving} className="shrink-0">
-						{saving ? (
-							<>
-								<Loader2 className="size-4 animate-spin" />
-								Saving…
-							</>
-						) : (
-							"Save changes"
+			<Dialog open={leaveDialogOpen} onOpenChange={(open) => !open && handleStay()}>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle>Unsaved changes</DialogTitle>
+						<DialogDescription>
+							You have unsaved changes. Do you want to continue without saving?
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter className="gap-2 sm:gap-0">
+						<Button type="button" variant="outline" onClick={handleStay}>
+							Stay
+						</Button>
+						<Button type="button" variant="destructive" onClick={handleLeaveWithoutSaving}>
+							Leave without saving
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={confirmDialogOpen} onOpenChange={(open) => !saving && setConfirmDialogOpen(open)}>
+				<DialogContent className="sm:max-w-lg">
+					<DialogHeader>
+						<DialogTitle>Confirm profile update</DialogTitle>
+						<DialogDescription>
+							{saving
+								? "Profile is being updated…"
+								: "Are you sure? Please recheck all data below. Your whole profile will be updated."}
+						</DialogDescription>
+					</DialogHeader>
+					{saving && (
+						<div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+							<Loader2 className="size-5 shrink-0 animate-spin" />
+							Profile is being updated…
+						</div>
+					)}
+					{apiError && (
+						<p className="text-destructive text-sm">{apiError}</p>
+					)}
+					{!saving && (
+					<div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3 text-sm">
+						<div className="grid gap-1">
+							<span className="text-muted-foreground">Full name</span>
+							<span className="font-medium">{fullName.trim() || "—"}</span>
+						</div>
+						<div className="grid gap-1">
+							<span className="text-muted-foreground">Email</span>
+							<span className="font-medium">{email.trim() || "—"}</span>
+						</div>
+						<div className="grid gap-1">
+							<span className="text-muted-foreground">Phone</span>
+							<span className="font-medium">{phone.trim() || "—"}</span>
+						</div>
+						<div className="grid gap-1">
+							<span className="text-muted-foreground">Date of birth</span>
+							<span className="font-medium">{dateOfBirth.trim() || "—"}</span>
+						</div>
+						{profileRole === "trainer" && (
+							<div className="grid gap-1">
+								<span className="text-muted-foreground">Dance partner</span>
+								<span className="font-medium">{dancePartner.trim() || "—"}</span>
+							</div>
 						)}
-					</Button>
-				</div>
-			</div>
+					</div>
+					)}
+					<DialogFooter className="gap-2 sm:gap-0">
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setConfirmDialogOpen(false)}
+							disabled={saving}
+						>
+							Cancel
+						</Button>
+						<Button
+							type="button"
+							onClick={() => performSubmit()}
+							disabled={saving}
+						>
+							{saving ? (
+								<>
+									<Loader2 className="size-4 animate-spin" />
+									Saving…
+								</>
+							) : (
+								"Yes, update profile"
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
 			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 				{/* Role card (Student / Trainer) – name, email, rank */}
 				<Card className="sm:col-span-2">
@@ -285,10 +453,10 @@ export function ProfileForm() {
 									placeholder="e.g. Alex Smith"
 									value={fullName}
 									onChange={(e) => {
-										markDirty()
+										markDirty("student")
 										setFullName(e.target.value)
 									}}
-									onBlur={handleBlurScrollToSave}
+									onBlur={() => handleBlurScrollToSave(saveInCardRef)}
 									autoComplete="name"
 									className="border-input bg-background"
 									aria-invalid={!!nameError}
@@ -303,10 +471,10 @@ export function ProfileForm() {
 									placeholder="you@example.com"
 									value={email}
 									onChange={(e) => {
-										markDirty()
+										markDirty("student")
 										setEmail(e.target.value)
 									}}
-									onBlur={handleBlurScrollToSave}
+									onBlur={() => handleBlurScrollToSave(saveInCardRef)}
 									autoComplete="email"
 									className="border-input bg-background"
 									aria-invalid={!!emailError}
@@ -314,6 +482,21 @@ export function ProfileForm() {
 								{emailError && <FieldError>{emailError}</FieldError>}
 								<p className="text-muted-foreground text-sm">Changing email may require a new sign-in.</p>
 							</Field>
+							{dirtyCards.student && (
+								<div ref={saveInCardRef} className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+									{apiError && <span className="text-destructive text-sm">{apiError}</span>}
+									<Button
+										type="button"
+										disabled={saving}
+										onClick={openConfirmDialog}
+										className={cn(
+											saveHighlight && "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+										)}
+									>
+										Save
+									</Button>
+								</div>
+							)}
 							<div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
 								<span className="text-muted-foreground text-sm font-medium">Rank</span>
 								<div className="flex flex-wrap items-center gap-2">
@@ -346,16 +529,24 @@ export function ProfileForm() {
 								placeholder="+1 (555) 000-0000"
 								value={phone}
 								onChange={(e) => {
-									markDirty()
+									markDirty("phone")
 									setPhone(e.target.value)
 								}}
-								onBlur={handleBlurScrollToSave}
+								onBlur={() => handleBlurScrollToSave(phoneCardSaveRef)}
 								autoComplete="tel"
 								className="border-input bg-background"
 								aria-invalid={!!phoneError}
 							/>
 							{phoneError && <FieldError>{phoneError}</FieldError>}
 						</Field>
+						{dirtyCards.phone && (
+							<div ref={phoneCardSaveRef} className="flex flex-wrap items-center gap-3 border-t border-border pt-4 mt-4">
+								{apiError && <span className="text-destructive text-sm">{apiError}</span>}
+								<Button type="button" disabled={saving} onClick={openConfirmDialog}>
+									Save
+								</Button>
+							</div>
+						)}
 					</CardContent>
 				</Card>
 
@@ -376,14 +567,22 @@ export function ProfileForm() {
 								type="date"
 								value={dateOfBirth}
 								onChange={(e) => {
-									markDirty()
+									markDirty("dob")
 									setDateOfBirth(e.target.value)
 								}}
-								onBlur={handleBlurScrollToSave}
+								onBlur={() => handleBlurScrollToSave(dobCardSaveRef)}
 								max={new Date().toISOString().slice(0, 10)}
 								className="border-input bg-background"
 							/>
 						</Field>
+						{dirtyCards.dob && (
+							<div ref={dobCardSaveRef} className="flex flex-wrap items-center gap-3 border-t border-border pt-4 mt-4">
+								{apiError && <span className="text-destructive text-sm">{apiError}</span>}
+								<Button type="button" disabled={saving} onClick={openConfirmDialog}>
+									Save
+								</Button>
+							</div>
+						)}
 					</CardContent>
 				</Card>
 
@@ -521,27 +720,10 @@ export function ProfileForm() {
 								</p>
 							)}
 						</div>
-						<div ref={saveSectionRef} className="flex flex-col gap-2">
-							{apiError && <FieldError>{apiError}</FieldError>}
+						<div className="flex flex-col gap-2">
 							{success && (
 								<p className="text-emerald-600 text-sm dark:text-emerald-400">Profile saved successfully.</p>
 							)}
-							<Button
-								type="submit"
-								disabled={saving}
-								className={cn(
-									saveHighlight && "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
-								)}
-							>
-								{saving ? (
-									<>
-										<Loader2 className="size-4 animate-spin" />
-										Saving…
-									</>
-								) : (
-									"Save changes"
-								)}
-							</Button>
 						</div>
 					</CardContent>
 				</Card>

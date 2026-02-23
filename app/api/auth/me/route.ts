@@ -12,11 +12,18 @@ export async function GET() {
 		return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 	}
 
-	const { data: profile } = await supabase
+	let { data: profile } = await supabase
 		.from("profiles")
-		.select("full_name, phone, dance_partner, category, rank_standard, rank_latin, date_of_birth, availability, onboarding_completed, role, club_id")
+		.select("full_name, phone, email, dance_partner, category, rank_standard, rank_latin, date_of_birth, availability, onboarding_completed, role, club_id")
 		.eq("id", user.id)
 		.single()
+
+	// Backfill profiles.email from auth so club contact dialog shows it for existing users
+	const authEmail = user.email?.trim() || null
+	if (authEmail && profile && profile.email !== authEmail) {
+		await supabase.from("profiles").update({ email: authEmail }).eq("id", user.id)
+		profile = { ...profile, email: authEmail }
+	}
 
 	let club: { id: string; name: string } | null = null
 	if (profile?.club_id) {

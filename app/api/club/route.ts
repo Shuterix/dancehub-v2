@@ -68,7 +68,7 @@ export async function GET() {
 	const userIds = [...new Set((members ?? []).map((m) => m.user_id))]
 	const { data: profiles } = await supabase
 		.from("profiles")
-		.select("id, full_name, rank_standard, rank_latin, date_of_birth, availability, login_code")
+		.select("id, full_name, phone, email, rank_standard, rank_latin, date_of_birth, availability, login_code")
 		.in("id", userIds.length ? userIds : ["00000000-0000-0000-0000-000000000000"])
 
 	function ageFromDateOfBirth(dob: string | null | undefined): number | null {
@@ -87,6 +87,8 @@ export async function GET() {
 			p.id,
 			{
 				full_name: p.full_name ?? "—",
+				phone: p.phone ?? null,
+				email: p.email ?? null,
 				rank_standard: p.rank_standard ?? null,
 				rank_latin: p.rank_latin ?? null,
 				date_of_birth: p.date_of_birth ?? null,
@@ -120,6 +122,8 @@ export async function GET() {
 		return {
 			user_id: m.user_id,
 			full_name: p?.full_name ?? "—",
+			phone: p?.phone ?? null,
+			email: p?.email ?? null,
 			rank_standard: p?.rank_standard ?? null,
 			rank_latin: p?.rank_latin ?? null,
 			age: dob ? ageFromDateOfBirth(dob) : null,
@@ -137,11 +141,14 @@ export async function GET() {
 		return {
 			user_id: m.user_id,
 			full_name: p?.full_name ?? "—",
+			phone: p?.phone ?? null,
+			email: p?.email ?? null,
 			rank_standard: p?.rank_standard ?? null,
 			rank_latin: p?.rank_latin ?? null,
 			age: dob ? ageFromDateOfBirth(dob) : null,
 			is_external: !!loginCode,
 			login_code: loginCode ?? undefined,
+			availability: (p?.availability ?? []) as AvailabilitySlot[],
 		}
 	})
 
@@ -155,6 +162,10 @@ export async function GET() {
 			partner2_user_id: c.partner2_user_id ?? null,
 			partner1_name: c.partner1_user_id ? nameByUserId.get(c.partner1_user_id) ?? null : null,
 			partner2_name: c.partner2_user_id ? nameByUserId.get(c.partner2_user_id) ?? null : null,
+			partner1_phone: p1?.phone ?? null,
+			partner2_phone: p2?.phone ?? null,
+			partner1_email: p1?.email ?? null,
+			partner2_email: p2?.email ?? null,
 			partner1_availability: (p1?.availability ?? []) as AvailabilitySlot[],
 			partner2_availability: (p2?.availability ?? []) as AvailabilitySlot[],
 			availability: (Array.isArray(c.availability) ? c.availability : []) as AvailabilitySlot[],

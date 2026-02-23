@@ -270,6 +270,20 @@ export async function PATCH(
 			.from("timetables")
 			.update({ is_active: body.is_active, paused_at: body.is_active ? null : new Date().toISOString(), updated_at: new Date().toISOString() })
 			.eq("id", timetableId)
+		// When disabling: delete all non-static lessons so the timetable can be generated again later with same settings
+		if (body.is_active === false) {
+			const { data: toDelete } = await supabase
+				.from("lessons")
+				.select("id")
+				.eq("timetable_id", timetableId)
+				.eq("is_static", false)
+			const ids = (toDelete ?? []).map((r) => r.id)
+			if (ids.length > 0) {
+				for (let i = 0; i < ids.length; i += 200) {
+					await supabase.from("lessons").delete().in("id", ids.slice(i, i + 200))
+				}
+			}
+		}
 	}
 	if (body.day_start != null) {
 		const t = parseTime(body.day_start)

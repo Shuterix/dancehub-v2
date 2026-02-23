@@ -35,6 +35,101 @@ function nextMonday(from: Date): string {
 	return d.toISOString().slice(0, 10)
 }
 
+/** Add days to an ISO datetime string; keeps time part unchanged (YYYY-MM-DDTHH:mm:ss). */
+function addDays(iso: string, days: number): string {
+	const d = new Date(iso)
+	d.setDate(d.getDate() + days)
+	const y = d.getFullYear()
+	const m = String(d.getMonth() + 1).padStart(2, "0")
+	const day = String(d.getDate()).padStart(2, "0")
+	const time = iso.slice(11, 19)
+	return `${y}-${m}-${day}${time ? `T${time}` : ""}`
+}
+
+/** Add one month to an ISO datetime (same day of month). */
+function addMonth(iso: string): string {
+	const [datePart, timePart] = iso.split("T")
+	const [y, month, day] = datePart.split("-").map(Number)
+	const d = new Date(y, (month ?? 1) - 1, day ?? 1)
+	d.setMonth(d.getMonth() + 1)
+	const ny = d.getFullYear()
+	const nm = String(d.getMonth() + 1).padStart(2, "0")
+	const nd = String(d.getDate()).padStart(2, "0")
+	return `${ny}-${nm}-${nd}${timePart ? `T${timePart}` : ""}`
+}
+
+/** Replicate lessons for recurring timetables: weekly = +7 days per repeat, bi_weekly = +14, monthly = +1 month. */
+function replicateLessons(
+	lessons: Array<{
+		timetable_id: string
+		lesson_type: string
+		start_at: string
+		end_at: string
+		room_id: string | null
+		trainer_id: string | null
+		student_id: string | null
+		couple_id: string | null
+		group_id?: string | null
+		group_lesson_type_id?: string | null
+		is_static: boolean
+	}>,
+	recurrence: string,
+	validUntil: string | null,
+	weekStartMonday: string
+): typeof lessons {
+	const maxWeeks = 52
+	const endDate = validUntil
+		? new Date(validUntil + "T23:59:59")
+		: new Date(new Date(weekStartMonday + "T12:00:00").getTime() + maxWeeks * 7 * 24 * 60 * 60 * 1000)
+	const weekStart = new Date(weekStartMonday + "T12:00:00")
+	const replicated: typeof lessons = []
+
+	if (recurrence === "weekly" || recurrence === "weekends_only") {
+		for (let w = 1; w < maxWeeks; w++) {
+			const repeatStart = new Date(weekStart)
+			repeatStart.setDate(repeatStart.getDate() + w * 7)
+			if (repeatStart > endDate) break
+			for (const l of lessons) {
+				replicated.push({
+					...l,
+					start_at: addDays(l.start_at, w * 7),
+					end_at: addDays(l.end_at, w * 7),
+				})
+			}
+		}
+	} else if (recurrence === "bi_weekly") {
+		for (let w = 2; w < maxWeeks; w += 2) {
+			const repeatStart = new Date(weekStart)
+			repeatStart.setDate(repeatStart.getDate() + w * 7)
+			if (repeatStart > endDate) break
+			for (const l of lessons) {
+				replicated.push({
+					...l,
+					start_at: addDays(l.start_at, w * 7),
+					end_at: addDays(l.end_at, w * 7),
+				})
+			}
+		}
+	} else if (recurrence === "monthly") {
+		for (let m = 1; m < 12; m++) {
+			const repeatStart = new Date(weekStart)
+			repeatStart.setMonth(repeatStart.getMonth() + m)
+			if (repeatStart > endDate) break
+			for (const l of lessons) {
+				let start = l.start_at
+				let end = l.end_at
+				for (let i = 0; i < m; i++) {
+					start = addMonth(start)
+					end = addMonth(end)
+				}
+				replicated.push({ ...l, start_at: start, end_at: end })
+			}
+		}
+	}
+	// fixed_period: no replication (one-off or manual)
+	return replicated
+}
+
 function parseDate(s: unknown): string | null {
 	if (typeof s !== "string") return null
 	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
@@ -57,7 +152,7 @@ export async function POST(
 
 	const { data: timetable, error: tError } = await supabase
 		.from("timetables")
-		.select("id, day_start, day_end, recurrence")
+		.select("id, day_start, day_end, recurrence, valid_until")
 		.eq("id", timetableId)
 		.eq("club_id", clubId)
 		.single()
@@ -271,21 +366,38 @@ export async function POST(
 		"T23:59:59.999"
 	const weekStartTs = weekStartMonday + "T00:00:00.000"
 
+	// Delete non-static lessons: for recurring (weekly/bi_weekly/monthly) delete from this week through valid_until or 52 weeks; for fixed_period delete only this week
+	const recurrence = (timetable as { recurrence?: string }).recurrence ?? "weekly"
+	const validUntil = (timetable as { valid_until?: string | null }).valid_until ?? null
+	const isRecurring = recurrence === "weekly" || recurrence === "weekends_only" || recurrence === "bi_weekly" || recurrence === "monthly"
+	const periodEnd = isRecurring
+		? validUntil
+			? validUntil + "T23:59:59.999"
+			: (() => {
+					const e = new Date(weekStartMonday + "T12:00:00")
+					e.setDate(e.getDate() + 52 * 7)
+					return e.toISOString().slice(0, 19).replace("T", "T") + ".999"
+				})()
+		: weekEndStr
 	const { data: toDelete, error: listError } = await supabase
 		.from("lessons")
 		.select("id")
 		.eq("timetable_id", timetableId)
 		.eq("is_static", false)
 		.gte("start_at", weekStartTs)
-		.lte("start_at", weekEndStr)
+		.lte("start_at", periodEnd)
 	if (listError) {
 		return NextResponse.json({ error: listError.message }, { status: 500 })
 	}
 	const idsToDelete = (toDelete ?? []).map((r) => r.id)
 	if (idsToDelete.length > 0) {
-		const { error: delError } = await supabase.from("lessons").delete().in("id", idsToDelete)
-		if (delError) {
-			return NextResponse.json({ error: delError.message }, { status: 500 })
+		// Delete in chunks to avoid query size limits
+		for (let i = 0; i < idsToDelete.length; i += 200) {
+			const chunk = idsToDelete.slice(i, i + 200)
+			const { error: delError } = await supabase.from("lessons").delete().in("id", chunk)
+			if (delError) {
+				return NextResponse.json({ error: delError.message }, { status: 500 })
+			}
 		}
 	}
 
@@ -326,10 +438,26 @@ export async function POST(
 		return NextResponse.json({ error: insError.message }, { status: 500 })
 	}
 
+	// Replicate this week's pattern for recurring timetables so "My lessons" (week / month / year) shows all occurrences
+	const replicated = replicateLessons(lessons, recurrence, validUntil, weekStartMonday)
+	let totalCreated = inserted?.length ?? 0
+	if (replicated.length > 0) {
+		const BATCH = 150
+		for (let i = 0; i < replicated.length; i += BATCH) {
+			const batch = replicated.slice(i, i + BATCH)
+			const { error: repError } = await supabase.from("lessons").insert(batch)
+			if (repError) {
+				return NextResponse.json({ error: `Replicate lessons: ${repError.message}` }, { status: 500 })
+			}
+			totalCreated += batch.length
+		}
+	}
+
 	return NextResponse.json({
-		created: inserted?.length ?? 0,
+		created: totalCreated,
 		lessons: inserted ?? [],
 		week_start: weekStartMonday,
 		shortfalls,
+		replicated: replicated.length,
 	})
 }
