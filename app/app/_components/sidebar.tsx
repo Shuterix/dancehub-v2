@@ -215,15 +215,13 @@ export function DashboardSidebar({
 
 	return (
 		<aside
-			className={`
-        m-0 flex min-h-0 w-64 flex-col border-sidebar-border bg-sidebar text-sidebar-foreground
-        h-[100dvh] max-h-[100dvh]
-        sm:m-4 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]
-        fixed inset-y-0 left-0 z-40 shrink-0 overflow-hidden shadow-lg
-        rounded-2xl border transition-transform duration-200 ease-out
-        md:relative md:z-auto md:translate-x-0
-        ${open === false ? "-translate-x-full" : "translate-x-0 rounded-l-none"}
-      `}
+			className={cn(
+				"flex min-h-0 w-64 flex-col border-sidebar-border bg-sidebar text-sidebar-foreground overflow-hidden shadow-lg rounded-2xl border transition-transform duration-200 ease-out",
+				"fixed left-0 z-40 top-[env(safe-area-inset-top,0px)] bottom-[env(safe-area-inset-bottom,0px)] m-0",
+				"sm:m-4 sm:top-[calc(0.5rem+env(safe-area-inset-top,0px))] sm:bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))]",
+				"md:relative md:top-auto md:bottom-auto md:z-auto md:translate-x-0 md:h-full md:max-h-[calc(100dvh-2rem)]",
+				open === false ? "-translate-x-full" : "translate-x-0 rounded-l-none"
+			)}
 			style={{ willChange: "transform" }}
 		>
 			<div className="flex h-14 shrink-0 items-center justify-end border-b border-sidebar-border px-3 md:hidden">
@@ -360,7 +358,7 @@ export function DashboardSidebarLayout({
 
 	return (
 		<BreadcrumbLastSegmentContext.Provider value={{ lastSegmentLabel, setLastSegmentLabel }}>
-		<div className="flex h-[100dvh] max-h-[100dvh] w-full gap-0 overflow-hidden">
+		<div className="flex h-full min-h-dvh max-h-dvh w-full gap-0 overflow-hidden">
 			<DashboardSidebar
 				open={mobileOpen}
 				onClose={() => setMobileOpen(false)}
