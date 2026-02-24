@@ -43,6 +43,20 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 		if (err) setError(decodeURIComponent(err))
 	}, [searchParams])
 
+	// After signup, when the login page shows \"check-email\" message, automatically refresh
+	// the page when the user comes back from the verification tab.
+	useEffect(() => {
+		const message = searchParams.get("message")
+		if (message !== "check-email") return
+
+		const onFocus = () => {
+			// Reload once when user returns, so session / verification status is up to date
+			window.location.reload()
+		}
+		window.addEventListener("focus", onFocus)
+		return () => window.removeEventListener("focus", onFocus)
+	}, [searchParams])
+
 	const handleMemberSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault()
 		setLoading(true)

@@ -15,10 +15,15 @@ export async function POST(request: Request) {
 		}
 
 		const supabase = await createClient()
+		const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ""
 		const { data, error } = await supabase.auth.signUp({
 			email,
 			password,
-			options: { data: { full_name: full_name?.trim() ?? "" } },
+			options: {
+				data: { full_name: full_name?.trim() ?? "" },
+				// After confirming in email, send user to a simple \"verified\" page in the app
+				emailRedirectTo: siteUrl ? `${siteUrl.replace(/\/$/, '')}/auth/verify` : undefined,
+			},
 		})
 
 		if (error) return NextResponse.json({ error: error.message }, { status: 400 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2 } from "lucide-react"
+import { Loader2, ExternalLink } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -63,8 +63,9 @@ export function RegisterForm({
 			return
 		}
 
-		if (!name.match(/^[a-zA-Z\s]+$/)) {
-			setNameErrors(["Please enter a valid name."])
+		// Allow international names with diacritics, spaces, hyphens and apostrophes
+		if (!name.match(/^[\p{L}\s'-]+$/u)) {
+			setNameErrors(["Please enter a valid name (letters only)."])
 			return
 		}
 		if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
@@ -90,10 +91,52 @@ export function RegisterForm({
 			if (data.session) {
 				router.replace("/app")
 			} else {
-				toast.success("Check your email", {
-					description: "We sent a confirmation link. Click it to activate your account, then sign in.",
-					duration: 12_000,
-				})
+				// Rich toast with quick links to common email providers
+				toast.custom(
+					() => (
+						<div className="bg-background text-foreground border-border flex w-full max-w-sm flex-col gap-3 rounded-lg border p-3 shadow-lg">
+							<div className="space-y-1">
+								<p className="text-sm font-medium">Check your email</p>
+								<p className="text-xs text-muted-foreground">
+									We sent a confirmation link. Click it to activate your account, then return here to sign in.
+								</p>
+							</div>
+							<div className="flex flex-wrap gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									className="gap-1.5"
+									onClick={() => window.open("https://mail.google.com", "_blank", "noopener,noreferrer")}
+								>
+									<span>Gmail</span>
+									<ExternalLink className="size-3.5" />
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									className="gap-1.5"
+									onClick={() => window.open("https://outlook.live.com/mail/0/", "_blank", "noopener,noreferrer")}
+								>
+									<span>Outlook</span>
+									<ExternalLink className="size-3.5" />
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									className="gap-1.5"
+									onClick={() => window.open("https://mail.yahoo.com", "_blank", "noopener,noreferrer")}
+								>
+									<span>Yahoo</span>
+									<ExternalLink className="size-3.5" />
+								</Button>
+							</div>
+						</div>
+					),
+					{ duration: 12_000 }
+				)
 				// Short delay so the toast is visible before navigation
 				setTimeout(() => router.replace("/auth/login?message=check-email"), 600)
 			}
@@ -118,10 +161,19 @@ export function RegisterForm({
 						<FieldGroup>
 							<Field>
 								<FieldLabel htmlFor="name">Full Name</FieldLabel>
-								<Input id="name" name="name" type="text" placeholder="John Doe" value={name} onChange={(e) => {
-									setName(e.target.value)
-								}}
-									required autoComplete="name" aria-invalid={didSubmit && !name.match(/^[a-zA-Z]+ [a-zA-Z]+$/)} />
+								<Input
+									id="name"
+									name="name"
+									type="text"
+									placeholder="John Doe"
+									value={name}
+									onChange={(e) => {
+										setName(e.target.value)
+									}}
+									required
+									autoComplete="name"
+									aria-invalid={didSubmit && !name.match(/^[\p{L}\s'-]+$/u)}
+								/>
 								{didSubmit && nameErrors.length > 0 && (
 									<FieldError>
 										<ul className="ml-4 list-disc space-y-0.5">
