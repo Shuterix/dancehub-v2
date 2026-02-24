@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock, Search, Phone, ChevronRight, Mail, Copy } from "lucide-react"
+import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock, Search, Phone, ChevronRight, Mail, Copy, Trash2 } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,6 +27,14 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import { cn } from "@/lib/utils"
@@ -134,6 +142,8 @@ export default function ClubStudentsPage() {
 	const [detailStudent, setDetailStudent] = useState<Student | null>(null)
 	const [savingUserId, setSavingUserId] = useState<string | null>(null)
 	const [removingFromGroup, setRemovingFromGroup] = useState<string | null>(null)
+	const [removeStudentId, setRemoveStudentId] = useState<string | null>(null)
+	const [removingStudent, setRemovingStudent] = useState(false)
 	const [searchQuery, setSearchQuery] = useState("")
 	const [ageMin, setAgeMin] = useState<string>("")
 	const [ageMax, setAgeMax] = useState<string>("")
@@ -260,8 +270,26 @@ export default function ClubStudentsPage() {
 			}
 			toast.success("Removed from group")
 			loadData()
+			if (detailStudent?.user_id === userId) setDetailStudent(null)
 		} finally {
 			setRemovingFromGroup(null)
+		}
+	}
+
+	async function handleRemoveStudent(userId: string) {
+		setRemovingStudent(true)
+		try {
+			const res = await fetch(`/api/club/members/${userId}`, { method: "DELETE" })
+			const json = (await res.json()) as { error?: string }
+			if (!res.ok) throw new Error(json.error ?? "Failed to remove")
+			setRemoveStudentId(null)
+			if (detailStudent?.user_id === userId) setDetailStudent(null)
+			toast.success("Student removed from club")
+			loadData()
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : "Failed to remove student from club")
+		} finally {
+			setRemovingStudent(false)
 		}
 	}
 
@@ -763,6 +791,18 @@ export default function ClubStudentsPage() {
 													)
 												})()}
 											</div>
+											{data?.isTrainer && (
+												<div className="mt-auto border-t border-border pt-4">
+													<Button
+														variant="outline"
+														className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+														onClick={() => detailStudent && setRemoveStudentId(detailStudent.user_id)}
+													>
+														<Trash2 className="size-4" />
+														Remove from club
+													</Button>
+												</div>
+											)}
 										</div>
 									)}
 								</SheetContent>
@@ -773,6 +813,28 @@ export default function ClubStudentsPage() {
 								title={contactDialogTitle}
 								contact={contactDialogContact}
 							/>
+							<Dialog open={removeStudentId !== null} onOpenChange={(open) => !open && setRemoveStudentId(null)}>
+								<DialogContent className="sm:max-w-md">
+									<DialogHeader>
+										<DialogTitle>Remove from club</DialogTitle>
+										<DialogDescription>
+											This student will lose access to the club. They can re-join later if invited. Continue?
+										</DialogDescription>
+									</DialogHeader>
+									<DialogFooter className="gap-2 sm:gap-0">
+										<Button variant="outline" onClick={() => setRemoveStudentId(null)}>
+											Cancel
+										</Button>
+										<Button
+											variant="destructive"
+											onClick={() => removeStudentId && handleRemoveStudent(removeStudentId)}
+											disabled={removingStudent}
+										>
+											{removingStudent ? <Loader2 className="size-4 animate-spin" /> : "Remove from club"}
+										</Button>
+									</DialogFooter>
+								</DialogContent>
+							</Dialog>
 						</>
 					)}
 				</CardContent>
