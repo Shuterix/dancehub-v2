@@ -344,7 +344,7 @@ export function DashboardSidebarLayout({
 	useEffect(() => {
 		if (prevPathnameRef.current !== pathname) {
 			prevPathnameRef.current = pathname
-			setMobileOpen(false)
+			queueMicrotask(() => setMobileOpen(false))
 		}
 	}, [pathname])
 
