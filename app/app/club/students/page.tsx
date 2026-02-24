@@ -622,12 +622,13 @@ export default function ClubStudentsPage() {
 							</div>
 
 							<Sheet open={!!detailStudent} onOpenChange={(open) => !open && setDetailStudent(null)}>
-								<SheetContent side="right" className="flex flex-col">
-									<SheetHeader>
+								<SheetContent side="right" className="flex flex-col min-h-0 overflow-hidden p-0">
+									<SheetHeader className="shrink-0 border-b border-border px-6 pt-6 pb-4">
 										<SheetTitle>{detailStudent?.full_name ?? "Student"}</SheetTitle>
 									</SheetHeader>
 									{detailStudent && (
-										<div className="mt-6 space-y-4">
+										<div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+										<div className="mt-4 space-y-4">
 											<div>
 												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Contact</p>
 												<div className="mt-1.5 space-y-2">
@@ -803,6 +804,7 @@ export default function ClubStudentsPage() {
 													</Button>
 												</div>
 											)}
+										</div>
 										</div>
 									)}
 								</SheetContent>

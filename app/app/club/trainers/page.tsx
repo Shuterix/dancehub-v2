@@ -520,8 +520,8 @@ export default function ClubTrainersPage() {
 							</div>
 
 							<Sheet open={!!detailTrainer} onOpenChange={(open) => !open && setDetailTrainer(null)}>
-								<SheetContent side="right" className="flex flex-col">
-									<SheetHeader>
+								<SheetContent side="right" className="flex flex-col min-h-0 overflow-hidden p-0">
+									<SheetHeader className="shrink-0 border-b border-border px-6 pt-6 pb-4">
 										<SheetTitle className="flex items-center gap-2">
 											{detailTrainer?.full_name ?? "Trainer"}
 											{detailTrainer?.is_external && (
@@ -532,7 +532,8 @@ export default function ClubTrainersPage() {
 										</SheetTitle>
 									</SheetHeader>
 									{detailTrainer && (
-										<div className="mt-6 flex flex-1 flex-col gap-6">
+										<div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+										<div className="mt-4 flex flex-col gap-6">
 											<div className="space-y-4">
 												<div>
 													<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Contact</p>
@@ -658,6 +659,7 @@ export default function ClubTrainersPage() {
 													</Button>
 												</div>
 											)}
+										</div>
 										</div>
 									)}
 								</SheetContent>

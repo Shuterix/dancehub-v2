@@ -217,9 +217,9 @@ export function DashboardSidebar({
 		<aside
 			className={cn(
 				"flex min-h-0 w-64 flex-col border-sidebar-border bg-sidebar text-sidebar-foreground overflow-hidden shadow-lg rounded-2xl border transition-transform duration-200 ease-out",
-				"fixed left-0 z-40 top-[env(safe-area-inset-top,0px)] bottom-[env(safe-area-inset-bottom,0px)] m-0",
-				"sm:m-4 sm:top-[calc(0.5rem+env(safe-area-inset-top,0px))] sm:bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))]",
-				"md:relative md:top-auto md:bottom-auto md:z-auto md:translate-x-0 md:h-full md:max-h-[calc(100dvh-2rem)]",
+				"fixed left-0 z-40 m-0 top-[env(safe-area-inset-top,0px)] h-[calc(100svh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]",
+				"sm:m-4 sm:top-[calc(0.5rem+env(safe-area-inset-top,0px))] sm:h-[calc(100svh-2rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]",
+				"md:relative md:top-auto md:h-full md:max-h-[calc(100dvh-2rem)] md:z-auto md:translate-x-0",
 				open === false ? "-translate-x-full" : "translate-x-0 rounded-l-none"
 			)}
 			style={{ willChange: "transform" }}

@@ -607,14 +607,15 @@ export default function ClubCouplesPage() {
 							</div>
 
 							<Sheet open={!!detailCouple} onOpenChange={(open) => !open && setDetailCouple(null)}>
-								<SheetContent side="right" className="flex flex-col">
-									<SheetHeader>
+								<SheetContent side="right" className="flex flex-col min-h-0 overflow-hidden p-0">
+									<SheetHeader className="shrink-0 border-b border-border px-6 pt-6 pb-4">
 										<SheetTitle>
 											{(detailCouple?.name ?? [detailCouple?.partner1_name, detailCouple?.partner2_name].filter(Boolean).join(" & ")) || "Unnamed couple"}
 										</SheetTitle>
 									</SheetHeader>
 									{detailCouple && (
-										<div className="mt-6 space-y-4">
+										<div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+										<div className="mt-4 space-y-4">
 											<div>
 												<p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Partners</p>
 												<p className="text-foreground mt-0.5">
@@ -798,6 +799,7 @@ export default function ClubCouplesPage() {
 													</Button>
 												</div>
 											)}
+										</div>
 										</div>
 									)}
 								</SheetContent>
