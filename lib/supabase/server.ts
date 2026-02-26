@@ -1,17 +1,23 @@
 import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 /**
- * Server Supabase client that reads/writes the auth session via cookies.
- * Use this in API routes and Server Components to get the current user.
- * After signInWithPassword, the session is stored in cookies automatically.
+ * Cookie store interface compatible with Next.js cookies() return value.
+ * Callers must pass the result of `await cookies()` from "next/headers".
+ * Minimal shape so Next's RequestCookies/ReadonlyRequestCookies are assignable.
  */
-export async function createClient() {
-	const cookieStore = await cookies()
+export type CookieStore = {
+	getAll: () => { name: string; value: string }[]
+	set: (key: string, value: string, cookie?: object) => unknown
+}
 
+/**
+ * Server Supabase client that reads/writes the auth session via cookies.
+ * Use in API routes and Server Components: pass `await cookies()` from "next/headers".
+ */
+export function createClient(cookieStore: CookieStore) {
 	return createServerClient(supabaseUrl, supabaseAnonKey, {
 		cookies: {
 			getAll() {

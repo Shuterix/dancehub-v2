@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { checkAuthRateLimit } from "@/lib/rate-limit"
 
@@ -15,7 +16,8 @@ export async function POST(request: Request) {
 
 		if (!email || !password) return NextResponse.json({ error: "Missing email or password" }, { status: 400 })
 
-		const supabase = await createClient()
+		const cookieStore = await cookies()
+		const supabase = createClient(cookieStore)
 		const { data, error } = await supabase.auth.signInWithPassword({
 			email,
 			password,

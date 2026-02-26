@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { refreshCoupleAvailability, refreshGroupAvailability } from "@/lib/availability-db"
 
 export async function GET() {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
 		error: userError,
@@ -39,7 +41,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
 		error: userError,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 
 export async function DELETE(
@@ -6,7 +7,8 @@ export async function DELETE(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const { id: coupleId } = await params
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
 		error: userError,

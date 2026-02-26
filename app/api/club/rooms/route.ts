@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 
-async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>) {
+async function getClubAndAuth(supabase: ReturnType<typeof createClient>) {
 	const {
 		data: { user },
 		error: userError,
@@ -25,7 +26,8 @@ async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/
 }
 
 export async function GET() {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId } = auth
@@ -66,7 +68,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId, isTrainer } = auth

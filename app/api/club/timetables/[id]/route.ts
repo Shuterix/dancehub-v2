@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 
 const RECURRENCE_VALUES = ["weekly", "bi_weekly", "monthly", "weekends_only", "fixed_period"] as const
@@ -47,7 +48,8 @@ export async function GET(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const { id: timetableId } = await params
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId } = auth
@@ -205,7 +207,8 @@ export async function PATCH(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const { id: timetableId } = await params
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId, isTrainer } = auth
@@ -388,7 +391,8 @@ export async function DELETE(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const { id: timetableId } = await params
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId, isTrainer } = auth

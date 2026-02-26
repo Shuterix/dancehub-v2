@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { DashboardSidebarLayout } from "./_components/sidebar"
@@ -8,7 +9,8 @@ export default async function AppLayout({
 }: {
 	children: React.ReactNode
 }) {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
 		error: userError,

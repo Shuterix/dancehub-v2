@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -24,7 +25,8 @@ function generateCode(): string {
 
 export async function POST(request: Request) {
 	try {
-		const supabase = await createClient()
+		const cookieStore = await cookies()
+		const supabase = createClient(cookieStore)
 		const {
 			data: { user },
 			error: userError,

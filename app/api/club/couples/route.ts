@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { intersectAvailability, type AvailabilitySlot } from "@/lib/availability"
 
 export async function POST(request: Request) {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
 		error: userError,

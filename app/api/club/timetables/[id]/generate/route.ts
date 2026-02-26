@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { solveTimetable, type SolverTarget, type SolverGroupTarget, type DistributionPreference } from "@/lib/timetable-solver"
 import type { AvailabilitySlot } from "@/lib/availability"
@@ -141,7 +142,8 @@ export async function POST(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const { id: timetableId } = await params
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId, isTrainer } = auth

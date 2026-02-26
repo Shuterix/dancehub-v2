@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkAuthRateLimit } from "@/lib/rate-limit"
@@ -26,7 +27,8 @@ export async function POST(request: Request) {
 		if (profileError || !profile?.external_login_email) {
 			return NextResponse.json({ error: "Invalid or expired access code" }, { status: 401 })
 		}
-		const supabase = await createClient()
+		const cookieStore = await cookies()
+		const supabase = createClient(cookieStore)
 		const { error: signInError } = await supabase.auth.signInWithPassword({
 			email: profile.external_login_email,
 			password: profile.login_code,

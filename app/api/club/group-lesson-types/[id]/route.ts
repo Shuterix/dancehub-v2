@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 
 async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>) {
@@ -29,7 +30,8 @@ export async function PATCH(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const { id: typeId } = await params
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId, isTrainer } = auth
@@ -101,7 +103,8 @@ export async function DELETE(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const { id: typeId } = await params
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const auth = await getClubAndAuth(supabase)
 	if ("error" in auth) return auth.error
 	const { clubId, isTrainer } = auth

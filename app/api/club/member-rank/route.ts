@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 
 const RANKS = ["E", "D", "C", "B", "A", "S"] as const
 
 export async function PATCH(request: Request) {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
 		error: userError,

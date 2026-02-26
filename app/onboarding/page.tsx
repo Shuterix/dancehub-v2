@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { OnboardingClient } from "./_components/onboarding-client"
 
 export default async function OnboardingPage() {
-	const supabase = await createClient()
+	const cookieStore = await cookies()
+	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
 		error: userError,

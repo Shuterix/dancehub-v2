@@ -1,10 +1,33 @@
-import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
+import { cache } from "react"
 import { createClient } from "@/lib/supabase/server"
+import type { CookieStore } from "@/lib/supabase/server"
 import { refreshCoupleAvailability, refreshGroupAvailability } from "@/lib/availability-db"
+import type { AvailabilitySlot } from "@/lib/availability"
+import type { ClubData } from "./club-data.types"
 
-export async function GET() {
-	const cookieStore = await cookies()
+export type { ClubData } from "./club-data.types"
+export type { AvailabilitySlot } from "@/lib/availability"
+
+export type GetClubDataResult =
+	| { ok: true; data: ClubData }
+	| { ok: false; status: 401 }
+	| { ok: false; status: 404 }
+
+function ageFromDateOfBirth(dob: string | null | undefined): number | null {
+	if (!dob || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null
+	const birth = new Date(dob)
+	const today = new Date()
+	let a = today.getFullYear() - birth.getFullYear()
+	const m = today.getMonth() - birth.getMonth()
+	if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--
+	return a >= 0 && a <= 150 ? a : null
+}
+
+/**
+ * Server-only: fetch full club data for the current user.
+ * Pass the result of `await cookies()` from "next/headers".
+ */
+export const getClubData = cache(async (cookieStore: CookieStore): Promise<GetClubDataResult> => {
 	const supabase = createClient(cookieStore)
 	const {
 		data: { user },
@@ -12,7 +35,7 @@ export async function GET() {
 	} = await supabase.auth.getUser()
 
 	if (userError || !user) {
-		return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+		return { ok: false, status: 401 }
 	}
 
 	const { data: myProfile } = await supabase
@@ -22,7 +45,7 @@ export async function GET() {
 		.maybeSingle()
 
 	if (!myProfile?.club_id) {
-		return NextResponse.json({ error: "No club" }, { status: 404 })
+		return { ok: false, status: 404 }
 	}
 
 	const clubId = myProfile.club_id
@@ -34,7 +57,7 @@ export async function GET() {
 		.single()
 
 	if (clubError || !club) {
-		return NextResponse.json({ error: "Club not found" }, { status: 404 })
+		return { ok: false, status: 404 }
 	}
 
 	const { data: members } = await supabase
@@ -73,17 +96,6 @@ export async function GET() {
 		.select("id, full_name, phone, email, rank_standard, rank_latin, date_of_birth, availability, login_code")
 		.in("id", userIds.length ? userIds : ["00000000-0000-0000-0000-000000000000"])
 
-	function ageFromDateOfBirth(dob: string | null | undefined): number | null {
-		if (!dob || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null
-		const birth = new Date(dob)
-		const today = new Date()
-		let a = today.getFullYear() - birth.getFullYear()
-		const m = today.getMonth() - birth.getMonth()
-		if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--
-		return a >= 0 && a <= 150 ? a : null
-	}
-
-	type AvailabilitySlot = { day: string; start: string; end: string }
 	const profileByUserId = new Map(
 		(profiles ?? []).map((p) => [
 			p.id,
@@ -109,7 +121,7 @@ export async function GET() {
 
 	const students = (members ?? []).filter((m) => m.role === "student")
 	const trainers = (members ?? []).filter((m) => m.role === "trainer")
-	// Map: user_id -> partner's full_name (from couples)
+
 	const partnerNameByUserId = new Map<string, string>()
 	for (const c of couples ?? []) {
 		if (c.partner1_user_id && c.partner2_user_id) {
@@ -183,9 +195,9 @@ export async function GET() {
 	const groupIds = (groupsRows ?? []).map((g) => g.id)
 	const { data: groupMembersRows } = groupIds.length
 		? await supabase
-			.from("group_members")
-			.select("group_id, user_id, couple_id")
-			.in("group_id", groupIds)
+				.from("group_members")
+				.select("group_id, user_id, couple_id")
+				.in("group_id", groupIds)
 		: { data: [] }
 
 	for (const g of groupsRows ?? []) {
@@ -205,27 +217,30 @@ export async function GET() {
 	}
 
 	const groups = (groupsRows ?? []).map((g) => {
-		const members = (groupMembersRows ?? []).filter((m) => m.group_id === g.id)
-		const studentIds = members.map((m) => m.user_id).filter(Boolean) as string[]
-		const coupleIds = members.map((m) => m.couple_id).filter(Boolean) as string[]
+		const groupMembers = (groupMembersRows ?? []).filter((m) => m.group_id === g.id)
+		const studentIds = groupMembers.map((m) => m.user_id).filter(Boolean) as string[]
+		const coupleIds = groupMembers.map((m) => m.couple_id).filter(Boolean) as string[]
 		return {
 			id: g.id,
 			name: g.name,
 			created_at: g.created_at,
 			student_ids: studentIds,
 			couple_ids: coupleIds,
-			member_count: members.length,
+			member_count: groupMembers.length,
 			availability: (Array.isArray(g.availability) ? g.availability : []) as AvailabilitySlot[],
 		}
 	})
 
-	return NextResponse.json({
-		club: { id: club.id, name: club.name, code: club.code },
-		isTrainer: !!isTrainer,
-		couples: couplesWithNames,
-		allStudents,
-		allTrainers,
-		unpairedStudents,
-		groups,
-	})
-}
+	return {
+		ok: true,
+		data: {
+			club: { id: club.id, name: club.name, code: club.code },
+			isTrainer: !!isTrainer,
+			couples: couplesWithNames,
+			allStudents,
+			allTrainers,
+			unpairedStudents,
+			groups,
+		},
+	}
+})

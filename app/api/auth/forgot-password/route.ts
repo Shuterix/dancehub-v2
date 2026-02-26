@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { checkAuthRateLimit } from "@/lib/rate-limit"
 
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
 			return NextResponse.json({ error: "Email is required." }, { status: 400 })
 		}
 
-		const supabase = await createClient()
+		const cookieStore = await cookies()
+		const supabase = createClient(cookieStore)
 		const origin = request.headers.get("origin") ?? new URL(request.url).origin
 		const redirectTo = `${origin}/auth/reset-password`
 
