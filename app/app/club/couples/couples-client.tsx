@@ -211,7 +211,7 @@ export function ClubCouplesClient({ initialData }: { initialData: ClubDataCouple
 				return
 			}
 			toast.success("Removed from group")
-			load()
+			await reloadFromApi("silent")
 		} finally {
 			setRemovingFromGroup(null)
 		}
