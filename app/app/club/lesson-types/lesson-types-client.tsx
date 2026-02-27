@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -47,7 +48,9 @@ type GroupLessonType = {
 type Group = { id: string; name: string }
 
 export function ClubLessonTypesClient({ initialData }: { initialData: LessonTypesPageData }) {
-	const [data, setData] = useState(initialData)
+	const [data, setData] = useState<LessonTypesPageData>(() => {
+		return getPageCache<LessonTypesPageData>("app/club/lesson-types") ?? initialData
+	})
 	const [refreshing, setRefreshing] = useState(false)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editingType, setEditingType] = useState<GroupLessonType | null>(null)
@@ -58,8 +61,10 @@ export function ClubLessonTypesClient({ initialData }: { initialData: LessonType
 	const [deletingId, setDeletingId] = useState<string | null>(null)
 
 	useEffect(() => {
-		setData(initialData)
-		setRefreshing(false)
+		const cached = getPageCache<LessonTypesPageData>("app/club/lesson-types")
+		if (!cached) {
+			setPageCache("app/club/lesson-types", initialData)
+		}
 	}, [initialData])
 
 	const types = data.group_lesson_types
@@ -73,9 +78,24 @@ export function ClubLessonTypesClient({ initialData }: { initialData: LessonType
 				return res.json()
 			})
 			.then((json) => {
-				if (json?.group_lesson_types) setData((prev) => ({ ...prev, group_lesson_types: json.group_lesson_types }))
+				if (json?.group_lesson_types) {
+					setData((prev) => {
+						const next = { ...prev, group_lesson_types: json.group_lesson_types }
+						setPageCache("app/club/lesson-types", next)
+						return next
+					})
+				}
 			})
 	}, [])
+
+	async function handleRefresh() {
+		setRefreshing(true)
+		try {
+			await loadTypes()
+		} finally {
+			setRefreshing(false)
+		}
+	}
 
 	function openCreate() {
 		setEditingType(null)
@@ -175,10 +195,6 @@ export function ClubLessonTypesClient({ initialData }: { initialData: LessonType
 	const groupsWithTypes = groupOrder.filter((g) => byGroup.has(g.id))
 	const groupsWithNoTypes = groupOrder.filter((g) => !byGroup.has(g.id))
 
-	if (refreshing) {
-		return <PageSkeleton backHref="/app/club" cardRowCount={6} />
-	}
-
 	const { isTrainer } = data
 
 	return (
@@ -202,7 +218,11 @@ export function ClubLessonTypesClient({ initialData }: { initialData: LessonType
 							: "Group lesson types define how long each kind of group lesson lasts."}
 					</p>
 				</div>
-				<PageRefreshButton refreshing={refreshing} onRefresh={() => setRefreshing(true)} aria-label="Refresh lesson types" />
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={handleRefresh}
+					aria-label="Refresh lesson types"
+				/>
 			</div>
 
 			<Card>

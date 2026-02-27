@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { GraduationCap, Loader2, ChevronLeft, MoreVertical, UserPlus, Copy, Check, Trash2, Search, Phone, Clock, ChevronRight, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -36,6 +35,7 @@ import { formatSlot, type AvailabilitySlot } from "@/lib/availability"
 import type { ClubData } from "@/lib/club-data.types"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 
 const TRAINERS_GRID = "grid grid-cols-[1fr_8rem_7rem_7rem_7rem_minmax(0,1.5fr)] gap-3 items-center"
 
@@ -80,8 +80,9 @@ type Trainer = {
 type ClubDataTrainers = Pick<ClubData, "club" | "isTrainer" | "allTrainers">
 
 export function ClubTrainersClient({ initialData }: { initialData: ClubDataTrainers }) {
-	const router = useRouter()
-	const [data, setData] = useState<ClubDataTrainers | null>(initialData)
+	const [data, setData] = useState<ClubDataTrainers | null>(() => {
+		return getPageCache<ClubDataTrainers>("app/club/trainers") ?? initialData
+	})
 	const [refreshing, setRefreshing] = useState(false)
 	const [detailTrainer, setDetailTrainer] = useState<Trainer | null>(null)
 	const [addExternalOpen, setAddExternalOpen] = useState(false)
@@ -120,15 +121,32 @@ export function ClubTrainersClient({ initialData }: { initialData: ClubDataTrain
 		})
 	}, [data?.allTrainers, searchQuery, ageMin, ageMax, externalOnly, filterRankStandard, filterRankLatin])
 
-	function loadClub() {
-		setRefreshing(true)
-		router.refresh()
-	}
-
 	useEffect(() => {
-		setData(initialData)
-		setRefreshing(false)
+		if (!initialData) return
+		const cached = getPageCache<ClubDataTrainers>("app/club/trainers")
+		if (!cached) {
+			setPageCache("app/club/trainers", initialData)
+		}
 	}, [initialData])
+
+	async function loadTrainers(mode: "refresh" | "silent" = "refresh") {
+		if (mode === "refresh") {
+			setRefreshing(true)
+		}
+		try {
+			const res = await fetch("/api/club")
+			if (!res.ok) {
+				return
+			}
+			const json = (await res.json()) as ClubDataTrainers
+			setData(json)
+			setPageCache("app/club/trainers", json)
+		} finally {
+			if (mode === "refresh") {
+				setRefreshing(false)
+			}
+		}
+	}
 
 	useEffect(() => {
 		fetch("/api/auth/me")
@@ -140,10 +158,6 @@ export function ClubTrainersClient({ initialData }: { initialData: ClubDataTrain
 	if (!data) return null
 
 	const allTrainers = data.allTrainers ?? []
-
-	if (refreshing) {
-		return <PageSkeleton backHref="/app/club" cardRowCount={6} />
-	}
 
 	async function handleAddExternalTeacher() {
 		setExternalCreating(true)
@@ -158,7 +172,7 @@ export function ClubTrainersClient({ initialData }: { initialData: ClubDataTrain
 			if (!res.ok) throw new Error(json.error ?? "Failed to create")
 			setExternalResult({ code: json.code ?? "", display_name: json.display_name ?? "External Teacher" })
 			setExternalName("")
-			loadClub()
+			await loadTrainers("silent")
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : "Failed to add external teacher")
 		} finally {
@@ -176,10 +190,7 @@ export function ClubTrainersClient({ initialData }: { initialData: ClubDataTrain
 			}
 			setRemoveTrainerId(null)
 			if (detailTrainer?.user_id === userId) setDetailTrainer(null)
-			await loadClub()
-			if (userId === currentUserId) {
-				router.replace("/onboarding")
-			}
+			await loadTrainers("silent")
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : "Failed to remove from club")
 		} finally {
@@ -213,7 +224,11 @@ export function ClubTrainersClient({ initialData }: { initialData: ClubDataTrain
 						All trainers in the club.
 					</p>
 				</div>
-				<PageRefreshButton refreshing={refreshing} onRefresh={() => setRefreshing(true)} aria-label="Refresh trainers list" />
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={() => loadTrainers("refresh")}
+					aria-label="Refresh trainers list"
+				/>
 			</div>
 
 			<Card>

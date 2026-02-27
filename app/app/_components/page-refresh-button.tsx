@@ -21,8 +21,11 @@ export function PageRefreshButton({
 	const router = useRouter()
 
 	const handleClick = () => {
-		onRefresh?.()
-		router.refresh()
+		if (onRefresh) {
+			onRefresh()
+		} else {
+			router.refresh()
+		}
 	}
 
 	return (

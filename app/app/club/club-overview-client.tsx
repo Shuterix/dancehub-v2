@@ -1,12 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Copy, UserPlus, GraduationCap, Heart, DoorOpen, BookOpen, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 
 type ClubOverviewData = {
 	club: { id: string; name: string; code: string }
@@ -23,15 +25,59 @@ function CountBadge({ count }: { count: number }) {
 	)
 }
 
-export function ClubOverviewClient({ initialData }: { initialData: ClubOverviewData }) {
+export function ClubOverviewClient() {
+	const router = useRouter()
 	const [copied, setCopied] = useState(false)
 	const [refreshing, setRefreshing] = useState(false)
+	const [loading, setLoading] = useState(() => !getPageCache<ClubOverviewData>("app/club/overview"))
+	const [error, setError] = useState<null | "no-club" | "unknown">(null)
+
+	const [data, setData] = useState<ClubOverviewData | null>(() => {
+		return getPageCache<ClubOverviewData>("app/club/overview")
+	})
+
+	async function loadClub(opts: { mode: "initial" | "refresh" }) {
+		if (opts.mode === "refresh") {
+			setRefreshing(true)
+		} else {
+			setLoading(true)
+		}
+		setError(null)
+		try {
+			const res = await fetch("/api/club", { credentials: "include" })
+			if (res.status === 401) {
+				router.push("/auth/login")
+				return
+			}
+			if (res.status === 404) {
+				setData(null)
+				setError("no-club")
+				return
+			}
+			if (!res.ok) {
+				setError("unknown")
+				return
+			}
+			const json = (await res.json()) as ClubOverviewData
+			setData(json)
+			setPageCache("app/club/overview", json)
+		} finally {
+			setLoading(false)
+			setRefreshing(false)
+		}
+	}
 
 	useEffect(() => {
-		setRefreshing(false)
-	}, [initialData])
+		if (data) return
+		// No cache yet – load once and show a local skeleton
+		void loadClub({ mode: "initial" })
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
-	const { club, couples, allStudents = [], allTrainers = [] } = initialData
+	const club = data?.club
+	const couples = data?.couples ?? []
+	const allStudents = data?.allStudents ?? []
+	const allTrainers = data?.allTrainers ?? []
 	const studentCount = allStudents.length
 	const trainerCount = allTrainers.length
 	const coupleCount = couples.length
@@ -43,8 +89,35 @@ export function ClubOverviewClient({ initialData }: { initialData: ClubOverviewD
 		setTimeout(() => setCopied(false), 2000)
 	}
 
-	if (refreshing) {
+	if (loading || refreshing) {
 		return <PageSkeleton backHref="/app" cardRowCount={4} />
+	}
+
+	if (error === "no-club") {
+		return (
+			<div className="space-y-6">
+				<div>
+					<h1 className="text-2xl font-semibold tracking-tight text-foreground">Club</h1>
+					<p className="text-muted-foreground text-sm">You are not in a club.</p>
+				</div>
+			</div>
+		)
+	}
+
+	if (!data || !club) {
+		return (
+			<div className="space-y-6">
+				<div>
+					<h1 className="text-2xl font-semibold tracking-tight text-foreground">Club</h1>
+					<p className="text-muted-foreground text-sm">Unable to load.</p>
+				</div>
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={() => loadClub({ mode: "refresh" })}
+					aria-label="Retry loading club"
+				/>
+			</div>
+		)
 	}
 
 	return (
@@ -56,7 +129,11 @@ export function ClubOverviewClient({ initialData }: { initialData: ClubOverviewD
 						{club.name} — manage students, trainers, and couples.
 					</p>
 				</div>
-				<PageRefreshButton refreshing={refreshing} onRefresh={() => setRefreshing(true)} aria-label="Refresh club" />
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={() => loadClub({ mode: "refresh" })}
+					aria-label="Refresh club"
+				/>
 			</div>
 
 			<Card>

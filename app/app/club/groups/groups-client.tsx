@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -43,7 +44,9 @@ import type { ClubData } from "@/lib/club-data.types"
 type Group = ClubData["groups"][number]
 
 export function ClubGroupsClient({ initialData }: { initialData: ClubData }) {
-	const [data, setData] = useState(initialData)
+	const [data, setData] = useState<ClubData>(() => {
+		return getPageCache<ClubData>("app/club/groups") ?? initialData
+	})
 	const [refreshing, setRefreshing] = useState(false)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editingGroup, setEditingGroup] = useState<Group | null>(null)
@@ -58,8 +61,10 @@ export function ClubGroupsClient({ initialData }: { initialData: ClubData }) {
 	const [listSearchQuery, setListSearchQuery] = useState("")
 
 	useEffect(() => {
-		setData(initialData)
-		setRefreshing(false)
+		const cached = getPageCache<ClubData>("app/club/groups")
+		if (!cached) {
+			setPageCache("app/club/groups", initialData)
+		}
 	}, [initialData])
 
 	const { groups, allStudents, couples, isTrainer } = data
@@ -78,7 +83,10 @@ export function ClubGroupsClient({ initialData }: { initialData: ClubData }) {
 				return res.json()
 			})
 			.then((json) => {
-				if (json) setData(json)
+				if (json) {
+					setData(json)
+					setPageCache("app/club/groups", json)
+				}
 			})
 	}, [])
 
@@ -237,10 +245,6 @@ export function ClubGroupsClient({ initialData }: { initialData: ClubData }) {
 				return name.toLowerCase().includes(coupleSearchLower)
 		  })
 		: couples
-
-	if (refreshing) {
-		return <PageSkeleton backHref="/app/club" cardRowCount={6} />
-	}
 
 	return (
 		<div className="space-y-6">

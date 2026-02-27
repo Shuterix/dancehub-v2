@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { createContext, Fragment, useContext, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { clearPageCache } from "@/lib/app-page-cache"
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -344,6 +345,7 @@ export function DashboardSidebarLayout({
 	useEffect(() => {
 		if (prevPathnameRef.current !== pathname) {
 			prevPathnameRef.current = pathname
+			clearPageCache()
 			queueMicrotask(() => setMobileOpen(false))
 		}
 	}, [pathname])

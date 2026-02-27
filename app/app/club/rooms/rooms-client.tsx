@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -33,7 +34,9 @@ import type { RoomsPageData } from "@/lib/club-pages-data.types"
 type Room = { id: string; name: string; teacher_ids: string[] }
 
 export function ClubRoomsClient({ initialData }: { initialData: RoomsPageData }) {
-	const [data, setData] = useState(initialData)
+	const [data, setData] = useState<RoomsPageData>(() => {
+		return getPageCache<RoomsPageData>("app/club/rooms") ?? initialData
+	})
 	const [refreshing, setRefreshing] = useState(false)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editingRoom, setEditingRoom] = useState<Room | null>(null)
@@ -43,8 +46,10 @@ export function ClubRoomsClient({ initialData }: { initialData: RoomsPageData })
 	const [deletingId, setDeletingId] = useState<string | null>(null)
 
 	useEffect(() => {
-		setData(initialData)
-		setRefreshing(false)
+		const cached = getPageCache<RoomsPageData>("app/club/rooms")
+		if (!cached) {
+			setPageCache("app/club/rooms", initialData)
+		}
 	}, [initialData])
 
 	const { clubData, rooms } = (() => {
@@ -78,9 +83,24 @@ export function ClubRoomsClient({ initialData }: { initialData: RoomsPageData })
 				return res.json()
 			})
 			.then((json) => {
-				if (json?.rooms) setData((prev) => ({ ...prev, rooms: json.rooms }))
+				if (json?.rooms) {
+					setData((prev) => {
+						const next = { ...prev, rooms: json.rooms }
+						setPageCache("app/club/rooms", next)
+						return next
+					})
+				}
 			})
 	}, [])
+
+	async function handleRefresh() {
+		setRefreshing(true)
+		try {
+			await loadRooms()
+		} finally {
+			setRefreshing(false)
+		}
+	}
 
 	async function handleSubmit() {
 		const name = formName.trim()
@@ -139,10 +159,6 @@ export function ClubRoomsClient({ initialData }: { initialData: RoomsPageData })
 		}
 	}
 
-	if (refreshing) {
-		return <PageSkeleton backHref="/app/club" cardRowCount={5} />
-	}
-
 	const { isTrainer, allTrainers } = clubData
 
 	return (
@@ -166,7 +182,11 @@ export function ClubRoomsClient({ initialData }: { initialData: RoomsPageData })
 							: "Rooms in your club. Trainers are assigned to rooms for lessons."}
 					</p>
 				</div>
-				<PageRefreshButton refreshing={refreshing} onRefresh={() => setRefreshing(true)} aria-label="Refresh rooms" />
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={handleRefresh}
+					aria-label="Refresh rooms"
+				/>
 			</div>
 
 			<Card>

@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { Users, UserPlus, Loader2, ChevronLeft, Trash2, Clock, MoreVertical, UsersRound, Search, Phone, Mail, Copy } from "lucide-react"
@@ -41,6 +40,7 @@ import { cn } from "@/lib/utils"
 import type { ClubData } from "@/lib/club-data.types"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 type GroupSummary = { id: string; name: string; student_ids: string[]; couple_ids: string[] }
 
 const COUPLES_GRID = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)] gap-4 items-center"
@@ -97,8 +97,9 @@ type Couple = {
 type ClubDataCouples = Pick<ClubData, "club" | "isTrainer" | "couples" | "unpairedStudents" | "groups">
 
 export function ClubCouplesClient({ initialData }: { initialData: ClubDataCouples }) {
-	const router = useRouter()
-	const [data, setData] = useState<ClubDataCouples | null>(initialData)
+	const [data, setData] = useState<ClubDataCouples | null>(() => {
+		return getPageCache<ClubDataCouples>("app/club/couples") ?? initialData
+	})
 	const [refreshing, setRefreshing] = useState(false)
 	const [createOpen, setCreateOpen] = useState(false)
 	const [partner1Id, setPartner1Id] = useState<string>("")
@@ -120,15 +121,32 @@ export function ClubCouplesClient({ initialData }: { initialData: ClubDataCouple
 		})
 	}, [data?.couples, searchQuery])
 
-	function load() {
-		setRefreshing(true)
-		router.refresh()
-	}
-
 	useEffect(() => {
-		setData(initialData)
-		setRefreshing(false)
+		if (!initialData) return
+		const cached = getPageCache<ClubDataCouples>("app/club/couples")
+		if (!cached) {
+			setPageCache("app/club/couples", initialData)
+		}
 	}, [initialData])
+
+	async function reloadFromApi(mode: "refresh" | "silent" = "refresh") {
+		if (mode === "refresh") {
+			setRefreshing(true)
+		}
+		try {
+			const res = await fetch("/api/club")
+			if (!res.ok) {
+				return
+			}
+			const json = (await res.json()) as ClubDataCouples
+			setData(json)
+			setPageCache("app/club/couples", json)
+		} finally {
+			if (mode === "refresh") {
+				setRefreshing(false)
+			}
+		}
+	}
 
 	async function handleCreate() {
 		if (!partner1Id || !partner2Id || partner1Id === partner2Id || !data?.isTrainer) return
@@ -150,7 +168,7 @@ export function ClubCouplesClient({ initialData }: { initialData: ClubDataCouple
 			setCreateOpen(false)
 			setPartner1Id("")
 			setPartner2Id("")
-			load()
+			await reloadFromApi("silent")
 		} catch (e) {
 			// could toast
 		} finally {
@@ -163,7 +181,7 @@ export function ClubCouplesClient({ initialData }: { initialData: ClubDataCouple
 		try {
 			const res = await fetch(`/api/club/couples/${coupleId}`, { method: "DELETE" })
 			if (!res.ok) throw new Error("Failed to remove couple")
-			load()
+			await reloadFromApi("silent")
 		} finally {
 			setRemovingId(null)
 		}
@@ -234,7 +252,11 @@ export function ClubCouplesClient({ initialData }: { initialData: ClubDataCouple
 						Paired dancers. Couple availability is when both partners are free.
 					</p>
 				</div>
-				<PageRefreshButton refreshing={refreshing} onRefresh={() => setRefreshing(true)} aria-label="Refresh couples list" />
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={() => reloadFromApi("refresh")}
+					aria-label="Refresh couples list"
+				/>
 			</div>
 
 			<Card>

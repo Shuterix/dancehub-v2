@@ -1,11 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Loader2, Calendar, XCircle, CalendarDays, ChevronDown } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -75,11 +76,17 @@ type InitialData = {
 	availableTimetables: Array<{ id: string; name: string | null }>
 }
 
-export function MyLessonsClient({ initialData }: { initialData: InitialData }) {
+export function MyLessonsClient() {
 	const router = useRouter()
-	const [lessons, setLessons] = useState<LessonItem[]>(initialData.lessons)
-	const [availableTimetables, setAvailableTimetables] = useState(initialData.availableTimetables)
-	const [loading, setLoading] = useState(false)
+	const [lessons, setLessons] = useState<LessonItem[]>(() => {
+		const cached = getPageCache<InitialData>("app/my-lessons")
+		return cached?.lessons ?? []
+	})
+	const [availableTimetables, setAvailableTimetables] = useState(() => {
+		const cached = getPageCache<InitialData>("app/my-lessons")
+		return cached?.availableTimetables ?? []
+	})
+	const [loading, setLoading] = useState(() => !getPageCache<InitialData>("app/my-lessons"))
 	const [refreshing, setRefreshing] = useState(false)
 	const [cancelLesson, setCancelLesson] = useState<LessonItem | null>(null)
 	const [cancelNote, setCancelNote] = useState("")
@@ -96,12 +103,6 @@ export function MyLessonsClient({ initialData }: { initialData: InitialData }) {
 		d.setDate(d.getDate() + 6)
 		return d.toISOString().slice(0, 10)
 	})
-
-	useEffect(() => {
-		setLessons(initialData.lessons)
-		setAvailableTimetables(initialData.availableTimetables)
-		setRefreshing(false)
-	}, [initialData])
 
 	const load = useCallback(() => {
 		const params = new URLSearchParams()
@@ -125,23 +126,64 @@ export function MyLessonsClient({ initialData }: { initialData: InitialData }) {
 				if (!res.ok) throw new Error("Failed to load lessons")
 				return res.json()
 			})
-			.then((json: { lessons?: LessonItem[]; availableTimetables?: Array<{ id: string; name: string | null }> }) => {
-				if (json) {
-					setLessons(json.lessons ?? [])
-					if (Array.isArray(json.availableTimetables)) setAvailableTimetables(json.availableTimetables)
+			.then(
+				(json: {
+					lessons?: LessonItem[]
+					availableTimetables?: Array<{ id: string; name: string | null }>
+				}) => {
+					if (json) {
+						const nextLessons = json.lessons ?? []
+						const nextAvailable = Array.isArray(json.availableTimetables)
+							? json.availableTimetables
+							: availableTimetables
+						setLessons(nextLessons)
+						setAvailableTimetables(nextAvailable)
+						setPageCache("app/my-lessons", {
+							lessons: nextLessons,
+							availableTimetables: nextAvailable,
+						})
+					}
 				}
-			})
+			)
 			.catch(() => setLessons([]))
-	}, [router, range, customFrom, customTo, selectedTimetableIds])
+	}, [router, range, customFrom, customTo, selectedTimetableIds, availableTimetables])
 
+	const isFirstLoad = useRef(true)
+
+	// Initial load when there is no cache yet.
 	useEffect(() => {
-		if (range === "week" && selectedTimetableIds.length === 0) return
+		const cached = getPageCache<InitialData>("app/my-lessons")
+		if (cached) return
+
 		let cancelled = false
 		setLoading(true)
 		load().finally(() => {
 			if (!cancelled) setLoading(false)
 		})
-		return () => { cancelled = true }
+
+		return () => {
+			cancelled = true
+		}
+	}, [load])
+
+	useEffect(() => {
+		let cancelled = false
+
+		// On first render with default filters, rely on either cached data or the
+		// initial client-side load above instead of triggering an extra fetch.
+		if (isFirstLoad.current && range === "week" && selectedTimetableIds.length === 0) {
+			isFirstLoad.current = false
+			return
+		}
+
+		isFirstLoad.current = false
+		setLoading(true)
+		load().finally(() => {
+			if (!cancelled) setLoading(false)
+		})
+		return () => {
+			cancelled = true
+		}
 	}, [range, selectedTimetableIds, customFrom, customTo])
 
 	async function handleRefresh() {

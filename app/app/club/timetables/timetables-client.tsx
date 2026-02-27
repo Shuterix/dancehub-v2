@@ -3,16 +3,10 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
-import {
-	Calendar,
-	ChevronLeft,
-	Plus,
-	Loader2,
-	Copy,
-	Trash2,
-} from "lucide-react"
+import { Calendar, ChevronLeft, Plus, Loader2, Copy, Trash2 } from "lucide-react"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -35,15 +29,19 @@ const RECURRENCE_LABELS: Record<string, string> = {
 }
 
 export function ClubTimetablesClient({ initialData }: { initialData: TimetablesPageData }) {
-	const [data, setData] = useState(initialData)
+	const [data, setData] = useState<TimetablesPageData>(() => {
+		return getPageCache<TimetablesPageData>("app/club/timetables") ?? initialData
+	})
 	const [refreshing, setRefreshing] = useState(false)
 	const [deletingId, setDeletingId] = useState<string | null>(null)
 	const [duplicateId, setDuplicateId] = useState<string | null>(null)
 	const [deleteConfirm, setDeleteConfirm] = useState<TimetableRow | null>(null)
 
 	useEffect(() => {
-		setData(initialData)
-		setRefreshing(false)
+		const cached = getPageCache<TimetablesPageData>("app/club/timetables")
+		if (!cached) {
+			setPageCache("app/club/timetables", initialData)
+		}
 	}, [initialData])
 
 	const { timetables, isTrainer } = data
@@ -56,9 +54,24 @@ export function ClubTimetablesClient({ initialData }: { initialData: TimetablesP
 				return res.json()
 			})
 			.then((json) => {
-				if (json?.timetables) setData((prev) => ({ ...prev, timetables: json.timetables }))
+				if (json?.timetables) {
+					setData((prev) => {
+						const next = { ...prev, timetables: json.timetables }
+						setPageCache("app/club/timetables", next)
+						return next
+					})
+				}
 			})
 	}, [])
+
+	async function handleRefresh() {
+		setRefreshing(true)
+		try {
+			await loadTimetables()
+		} finally {
+			setRefreshing(false)
+		}
+	}
 
 	async function handleDuplicate(t: TimetableRow) {
 		setDuplicateId(t.id)
@@ -130,7 +143,11 @@ export function ClubTimetablesClient({ initialData }: { initialData: TimetablesP
 							: "View club timetables."}
 					</p>
 				</div>
-				<PageRefreshButton refreshing={refreshing} onRefresh={() => setRefreshing(true)} aria-label="Refresh timetables" />
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={handleRefresh}
+					aria-label="Refresh timetables"
+				/>
 			</div>
 
 			<Card>

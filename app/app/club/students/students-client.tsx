@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { Users, Loader2, ChevronLeft, MoreVertical, UsersRound, Clock, Search, Phone, ChevronRight, Mail, Copy, Trash2 } from "lucide-react"
@@ -41,6 +40,7 @@ import { ContactDialog, type ContactInfo } from "@/app/app/club/_components/cont
 import type { ClubData } from "@/lib/club-data.types"
 import { PageRefreshButton } from "@/app/app/_components/page-refresh-button"
 import { PageSkeleton } from "@/app/app/_components/page-skeleton"
+import { getPageCache, setPageCache } from "@/lib/app-page-cache"
 
 type GroupSummary = { id: string; name: string; student_ids: string[]; couple_ids: string[] }
 
@@ -120,8 +120,9 @@ function RankSelect({
 type Student = ClubData["allStudents"][number]
 
 export function ClubStudentsClient({ initialData }: { initialData: ClubData }) {
-	const router = useRouter()
-	const [data, setData] = useState<ClubData>(initialData)
+	const [data, setData] = useState<ClubData>(() => {
+		return getPageCache<ClubData>("app/club/students") ?? initialData
+	})
 	const [refreshing, setRefreshing] = useState(false)
 	const [detailStudent, setDetailStudent] = useState<Student | null>(null)
 	const [savingUserId, setSavingUserId] = useState<string | null>(null)
@@ -154,19 +155,34 @@ export function ClubStudentsClient({ initialData }: { initialData: ClubData }) {
 		})
 	}, [data?.allStudents, searchQuery, ageMin, ageMax, filterRankStandard, filterRankLatin])
 
-	// Sync when server sends new data (e.g. after router.refresh())
 	useEffect(() => {
-		setData(initialData)
-		if (detailStudent && initialData.allStudents) {
-			const updated = initialData.allStudents.find((s) => s.user_id === detailStudent.user_id)
-			if (updated) setDetailStudent(updated)
+		const cached = getPageCache<ClubData>("app/club/students")
+		if (!cached) {
+			setPageCache("app/club/students", initialData)
 		}
-		setRefreshing(false)
 	}, [initialData])
 
-	function refreshPage() {
-		setRefreshing(true)
-		router.refresh()
+	async function loadStudents(mode: "refresh" | "silent" = "refresh") {
+		if (mode === "refresh") {
+			setRefreshing(true)
+		}
+		try {
+			const res = await fetch("/api/club")
+			if (!res.ok) {
+				return
+			}
+			const json = (await res.json()) as ClubData
+			setData(json)
+			setPageCache("app/club/students", json)
+			if (detailStudent && json.allStudents) {
+				const updated = json.allStudents.find((s) => s.user_id === detailStudent.user_id)
+				if (updated) setDetailStudent(updated)
+			}
+		} finally {
+			if (mode === "refresh") {
+				setRefreshing(false)
+			}
+		}
 	}
 
 	async function updateRank(
@@ -186,7 +202,7 @@ export function ClubStudentsClient({ initialData }: { initialData: ClubData }) {
 				return
 			}
 			toast.success("Rank updated")
-			refreshPage()
+			await loadStudents("silent")
 		} finally {
 			setSavingUserId(null)
 		}
@@ -216,7 +232,7 @@ export function ClubStudentsClient({ initialData }: { initialData: ClubData }) {
 				return
 			}
 			toast.success("Removed from group")
-			refreshPage()
+			await loadStudents("silent")
 			if (detailStudent?.user_id === userId) setDetailStudent(null)
 		} finally {
 			setRemovingFromGroup(null)
@@ -232,7 +248,7 @@ export function ClubStudentsClient({ initialData }: { initialData: ClubData }) {
 			setRemoveStudentId(null)
 			if (detailStudent?.user_id === userId) setDetailStudent(null)
 			toast.success("Student removed from club")
-			refreshPage()
+			await loadStudents("silent")
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : "Failed to remove student from club")
 		} finally {
@@ -241,10 +257,6 @@ export function ClubStudentsClient({ initialData }: { initialData: ClubData }) {
 	}
 
 	const { allStudents, isTrainer } = data
-
-	if (refreshing) {
-		return <PageSkeleton backHref="/app/club" cardRowCount={8} />
-	}
 
 	return (
 		<div className="space-y-6">
@@ -265,7 +277,11 @@ export function ClubStudentsClient({ initialData }: { initialData: ClubData }) {
 						All students in the club. {isTrainer && "Use the dropdowns to set Standard (STT) and Latin (LAT) rank per student."} Shows whether each has a dance partner.
 					</p>
 				</div>
-				<PageRefreshButton refreshing={refreshing} onRefresh={() => setRefreshing(true)} aria-label="Refresh students list" />
+				<PageRefreshButton
+					refreshing={refreshing}
+					onRefresh={() => loadStudents("refresh")}
+					aria-label="Refresh students list"
+				/>
 			</div>
 
 			<Card>
