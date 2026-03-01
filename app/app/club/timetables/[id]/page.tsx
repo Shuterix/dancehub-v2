@@ -409,11 +409,11 @@ export default function TimetableDetailPage({
 						</Link>
 					</Button>
 					<div className="min-w-0">
-						<h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground truncate">
+						<h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground break-words min-w-0">
 							<Calendar className="size-5 shrink-0" />
 							{timetable.name}
 						</h1>
-						<p className="text-muted-foreground text-xs sm:text-sm truncate">
+						<p className="text-muted-foreground text-xs sm:text-sm break-words min-w-0">
 							{RECURRENCE_LABELS[timetable.recurrence] ?? timetable.recurrence} · {formatDate(timetable.valid_from)}
 						</p>
 					</div>
@@ -1277,7 +1277,7 @@ function LessonGrid({
 										)}
 									>
 										<span className="text-muted-foreground text-sm shrink-0 w-14">{formatTimeRange(l.start_at, l.end_at)}</span>
-										<span className="font-medium truncate">{l.label}</span>
+										<span className="font-medium min-w-0 break-words">{l.label}</span>
 										{isCancelled && (
 											<span className="shrink-0 text-xs text-muted-foreground font-normal">Canceled</span>
 										)}
@@ -1324,7 +1324,7 @@ function LessonGrid({
 																onClick={() => onLessonClick(l)}
 																onKeyDown={(e) => e.key === "Enter" && onLessonClick(l)}
 																className={cn(
-																	"cursor-pointer rounded px-2 py-1 text-xs font-medium truncate max-w-[120px] transition-opacity hover:opacity-90 border-l-2",
+																	"cursor-pointer rounded px-2 py-1 text-xs font-medium break-words max-w-[120px] transition-opacity hover:opacity-90 border-l-2",
 																	TRAINER_COLORS[getTrainerColorIndex(l.trainer_id, trainerOrder)],
 																	isCancelled && "opacity-70"
 																)}

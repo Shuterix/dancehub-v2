@@ -1,12 +1,13 @@
 "use client"
 
 import { User, LogOut, Menu, X, Trophy, Users, UserPlus, Heart, GraduationCap, Clock, UsersRound, DoorOpen, BookOpen, Calendar, BookMarked } from "lucide-react"
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { createContext, Fragment, useContext, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { clearPageCache } from "@/lib/app-page-cache"
+import { useAppNavigation } from "@/app/app/_components/app-navigation-context"
+import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -62,6 +63,7 @@ function ClubHeader({ clubName }: { clubName: string | null }) {
 
 function NavLinks({ onLinkClick }: { onLinkClick?: () => void }) {
 	const pathname = usePathname()
+	const { navigate } = useAppNavigation()
 	return (
 		<nav className="flex flex-col gap-0">
 			{navSections.map((section, index) => (
@@ -79,10 +81,15 @@ function NavLinks({ onLinkClick }: { onLinkClick?: () => void }) {
 						{section.items.map((item) => {
 							const isActive = pathname === item.url
 							return (
-								<Link
+								<a
 									key={item.title}
 									href={item.url}
-									onClick={onLinkClick}
+									onClick={(e) => {
+										e.preventDefault()
+										if (pathname === item.url) return
+										onLinkClick?.()
+										navigate(item.url)
+									}}
 									className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${isActive
 											? "bg-sidebar-accent text-sidebar-accent-foreground"
 											: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -90,7 +97,7 @@ function NavLinks({ onLinkClick }: { onLinkClick?: () => void }) {
 								>
 									<item.icon className="size-4 shrink-0" />
 									<span>{item.title}</span>
-								</Link>
+								</a>
 							)
 						})}
 					</div>
@@ -113,6 +120,7 @@ function UserBlock({
 }) {
 	const router = useRouter()
 	const pathname = usePathname()
+	const { navigate } = useAppNavigation()
 
 	async function handleSignOut() {
 		await fetch("/api/auth/signout", { method: "POST" })
@@ -139,9 +147,15 @@ function UserBlock({
 				)}
 			</div>
 			<nav className="flex flex-col gap-1">
-				<Link
+				<a
 					href="/app/profile"
-					onClick={onLinkClick}
+					onClick={(e) => {
+						e.preventDefault()
+						if (pathname !== "/app/profile") {
+							onLinkClick?.()
+							navigate("/app/profile")
+						}
+					}}
 					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${pathname === "/app/profile"
 							? "bg-sidebar-accent text-sidebar-accent-foreground"
 							: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -149,10 +163,16 @@ function UserBlock({
 				>
 					<User className="size-4 shrink-0" />
 					Profile
-				</Link>
-				<Link
+				</a>
+				<a
 					href="/app/availability"
-					onClick={onLinkClick}
+					onClick={(e) => {
+						e.preventDefault()
+						if (pathname !== "/app/availability") {
+							onLinkClick?.()
+							navigate("/app/availability")
+						}
+					}}
 					className={`flex min-h-[44px] min-w-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${pathname === "/app/availability"
 							? "bg-sidebar-accent text-sidebar-accent-foreground"
 							: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -160,7 +180,7 @@ function UserBlock({
 				>
 					<Clock className="size-4 shrink-0" />
 					Availability
-				</Link>
+				</a>
 			</nav>
 			<div className="mt-1 border-t border-sidebar-border pt-1">
 				<button
@@ -284,6 +304,7 @@ function isUuid(segment: string): boolean {
 function DashboardBreadcrumbs() {
 	const pathname = usePathname()
 	const { lastSegmentLabel } = useContext(BreadcrumbLastSegmentContext)
+	const { navigate: appNavigate } = useAppNavigation()
 	const segments = pathname.split("/").filter(Boolean)
 
 	const items = segments.map((segment, i) => {
@@ -307,7 +328,15 @@ function DashboardBreadcrumbs() {
 								<BreadcrumbPage>{item.label}</BreadcrumbPage>
 							) : (
 								<BreadcrumbLink asChild>
-									<Link href={item.href}>{item.label}</Link>
+									<a
+										href={item.href}
+										onClick={(e) => {
+											e.preventDefault()
+											appNavigate(item.href)
+										}}
+									>
+										{item.label}
+									</a>
 								</BreadcrumbLink>
 							)}
 						</BreadcrumbItem>
@@ -337,6 +366,7 @@ export function DashboardSidebarLayout({
 	children: React.ReactNode
 }) {
 	const pathname = usePathname()
+	const { isPending } = useAppNavigation()
 	const [mobileOpen, setMobileOpen] = useState(false)
 	const [lastSegmentLabel, setLastSegmentLabel] = useState<string | null>(null)
 	const prevPathnameRef = useRef(pathname)
@@ -381,7 +411,9 @@ export function DashboardSidebarLayout({
 						<DashboardBreadcrumbs />
 					</div>
 				</header>
-				<main className="min-w-0 flex-1 rounded-t-xl m-4">{children}</main>
+				<main className="min-w-0 flex-1 rounded-t-xl m-4">
+					{isPending ? <PageSkeleton backHref="/app" contentOnly cardGridCount={6} /> : children}
+				</main>
 			</div>
 		</div>
 		</BreadcrumbLastSegmentContext.Provider>

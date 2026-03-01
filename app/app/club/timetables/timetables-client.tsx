@@ -150,7 +150,7 @@ export function ClubTimetablesClient({ initialData }: { initialData: TimetablesP
 				/>
 			</div>
 
-			<Card>
+			<Card className="overflow-hidden">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2 text-lg">
 						<Calendar className="size-5" />
@@ -162,7 +162,7 @@ export function ClubTimetablesClient({ initialData }: { initialData: TimetablesP
 							: `${timetables.length} timetable${timetables.length === 1 ? "" : "s"}.`}
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-4">
+				<CardContent className="space-y-4 overflow-x-hidden">
 					{isTrainer && (
 						<Button asChild className="cursor-pointer rounded-xl">
 							<Link href="/app/club/timetables/new">
@@ -175,19 +175,19 @@ export function ClubTimetablesClient({ initialData }: { initialData: TimetablesP
 					{timetables.length === 0 && !isTrainer ? (
 						<p className="text-muted-foreground text-sm">No timetables in this club yet.</p>
 					) : (
-						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
 							{timetables.map((t) => (
 								<Link
 									key={t.id}
 									href={`/app/club/timetables/${t.id}`}
 									className={cn(
-										"flex flex-col rounded-xl border border-border bg-muted/30 p-4 transition-colors cursor-pointer",
+										"flex min-w-0 flex-col rounded-xl border border-border bg-muted/30 p-4 transition-colors cursor-pointer overflow-hidden",
 										"hover:bg-muted/50"
 									)}
 								>
-									<div className="flex items-start justify-between gap-2">
+									<div className="flex items-start justify-between gap-2 min-w-0">
 										<div className="min-w-0 flex-1">
-											<span className="font-semibold text-foreground truncate block">
+											<span className="font-semibold text-foreground block break-words">
 												{t.name}
 											</span>
 											<p className="mt-0.5 text-muted-foreground text-sm">
@@ -208,7 +208,7 @@ export function ClubTimetablesClient({ initialData }: { initialData: TimetablesP
 											)}
 										</div>
 										{isTrainer && (
-											<div className="flex shrink-0 gap-1" onClick={(e) => e.preventDefault()}>
+											<div className="flex shrink-0 gap-1 pl-2" onClick={(e) => e.preventDefault()}>
 												<Button
 													variant="ghost"
 													size="icon"

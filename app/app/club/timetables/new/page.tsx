@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { ChevronLeft, ChevronRight, Loader2, Calendar } from "lucide-react"
-import { PageSkeleton } from "@/app/app/_components/page-skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -241,11 +240,27 @@ export default function NewTimetablePage() {
 		return name || partners || "Unnamed couple"
 	}
 
-	if (loading || !clubData) {
-		return <PageSkeleton backHref="/app/club/timetables" cardRowCount={10} />
+	if (error) {
+		return (
+			<div className="space-y-6">
+				<div className="flex items-center gap-2">
+					<Button variant="ghost" size="icon" asChild>
+						<Link href="/app/club/timetables" aria-label="Back">
+							<ChevronLeft className="size-4" />
+						</Link>
+					</Button>
+					<div>
+						<h1 className="text-2xl font-semibold tracking-tight text-foreground">Create timetable</h1>
+						<p className="text-destructive text-sm">{error}</p>
+					</div>
+				</div>
+			</div>
+		)
 	}
 
-	const { allStudents, couples, allTrainers } = clubData
+	const allStudents = clubData?.allStudents ?? []
+	const couples = clubData?.couples ?? []
+	const allTrainers = clubData?.allTrainers ?? []
 
 	return (
 		<div className="space-y-6">
@@ -332,7 +347,7 @@ export default function NewTimetablePage() {
 										type="date"
 										value={validFrom}
 										onChange={(e) => setValidFrom(e.target.value)}
-										className="cursor-pointer"
+										className="cursor-pointer pr-8"
 									/>
 								</div>
 								<div className="space-y-2">
@@ -342,7 +357,7 @@ export default function NewTimetablePage() {
 										type="date"
 										value={validUntil}
 										onChange={(e) => setValidUntil(e.target.value)}
-										className="cursor-pointer"
+										className="cursor-pointer pr-8"
 									/>
 								</div>
 							</div>
@@ -354,7 +369,7 @@ export default function NewTimetablePage() {
 										type="time"
 										value={dayStart}
 										onChange={(e) => setDayStart(e.target.value)}
-										className="cursor-pointer"
+										className="cursor-pointer pr-8"
 									/>
 								</div>
 								<div className="space-y-2">
@@ -364,7 +379,7 @@ export default function NewTimetablePage() {
 										type="time"
 										value={dayEnd}
 										onChange={(e) => setDayEnd(e.target.value)}
-										className="cursor-pointer"
+										className="cursor-pointer pr-8"
 									/>
 								</div>
 							</div>
@@ -380,8 +395,15 @@ export default function NewTimetablePage() {
 
 					{step === 2 && (
 						<>
-							<div className="space-y-2">
-								<Label>Students</Label>
+							{loading && !clubData ? (
+								<div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+									<Loader2 className="mr-2 size-4 animate-spin" />
+									Loading students and trainers…
+								</div>
+							) : (
+								<>
+									<div className="space-y-2">
+										<Label>Students</Label>
 								<div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-border bg-muted/30 p-3">
 									{allStudents.length === 0 ? (
 										<p className="text-muted-foreground text-sm">No students in club.</p>
@@ -559,6 +581,8 @@ export default function NewTimetablePage() {
 									</Button>
 								</div>
 							</div>
+						</>
+							)}
 						</>
 					)}
 

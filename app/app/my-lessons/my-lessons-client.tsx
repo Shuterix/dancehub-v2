@@ -231,7 +231,7 @@ export function MyLessonsClient() {
 	}
 
 	return (
-		<div className="flex flex-col gap-6 p-4 md:p-6">
+		<div className="flex flex-col gap-6 p-4 md:p-6 min-w-0 overflow-x-hidden">
 			<div className="flex flex-col gap-3">
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<div>
@@ -372,7 +372,7 @@ export function MyLessonsClient() {
 					</CardHeader>
 				</Card>
 			) : (
-				<ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+				<ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 min-w-0 overflow-x-hidden">
 					{lessons.map((lesson) => {
 						const isCancelled = !!lesson.cancelled_at
 						const styleIdx = getTimetableStyleIndex(lesson.timetable_id)
@@ -383,17 +383,18 @@ export function MyLessonsClient() {
 								key={lesson.id}
 								className={cn(
 									cardStyle,
-									isCancelled && "opacity-75 pointer-events-none"
+									isCancelled && "opacity-75 pointer-events-none",
+									"min-w-0 overflow-hidden"
 								)}
 								aria-disabled={isCancelled}
 							>
 								<CardHeader className="pb-2">
-									<div className="flex items-start justify-between gap-2">
-										<div>
-											<div className="flex items-center gap-2 flex-wrap">
-												<CardTitle className="text-base">{lesson.label}</CardTitle>
+									<div className="flex items-start justify-between gap-2 min-w-0">
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center gap-2 flex-wrap min-w-0">
+												<CardTitle className="text-base break-words min-w-0">{lesson.label}</CardTitle>
 												{lesson.timetable_name && (
-													<Badge variant="outline" className={cn("shrink-0 font-normal text-xs", badgeStyle)}>
+													<Badge variant="outline" className={cn("font-normal text-xs min-w-0 max-w-full break-words whitespace-normal px-3 py-1.5", badgeStyle)}>
 														{lesson.timetable_name}
 													</Badge>
 												)}
