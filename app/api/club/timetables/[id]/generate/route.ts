@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
-import { solveTimetable, type SolverTarget, type SolverGroupTarget, type DistributionPreference } from "@/lib/timetable-solver"
+import { solveTimetable, type SolverTarget, type SolverGroupTarget, type DistributionPreference, type ExistingLesson } from "@/lib/timetable-solver"
 import type { AvailabilitySlot } from "@/lib/availability"
 
 async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>) {
@@ -323,6 +323,40 @@ export async function POST(
 		}
 	}
 
+	// Fetch lessons from OTHER active timetables for the same week to prevent cross-timetable conflicts
+	const weekEndForQuery = (() => {
+		const [wy2, wm2, wd2] = weekStartMonday.split("-").map(Number)
+		const d = new Date(wy2, (wm2 ?? 1) - 1, (wd2 ?? 1) + 6)
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+	})()
+
+	const { data: otherTimetableIds } = await supabase
+		.from("timetables")
+		.select("id")
+		.eq("club_id", clubId)
+		.eq("is_active", true)
+		.neq("id", timetableId)
+	const otherIds = (otherTimetableIds ?? []).map((t) => t.id)
+
+	let existingLessons: ExistingLesson[] = []
+	if (otherIds.length > 0) {
+		const { data: extLessons } = await supabase
+			.from("lessons")
+			.select("trainer_id, room_id, start_at, end_at")
+			.in("timetable_id", otherIds)
+			.is("cancelled_at", null)
+			.gte("start_at", weekStartMonday + "T00:00:00")
+			.lte("start_at", weekEndForQuery + "T23:59:59")
+		existingLessons = (extLessons ?? [])
+			.filter((l): l is typeof l & { trainer_id: string } => !!l.trainer_id)
+			.map((l) => ({
+				trainer_id: l.trainer_id,
+				room_id: l.room_id ?? null,
+				start_at: l.start_at,
+				end_at: l.end_at,
+			}))
+	}
+
 	let lessons: Awaited<ReturnType<typeof solveTimetable>>
 	try {
 		lessons = solveTimetable({
@@ -341,6 +375,7 @@ export async function POST(
 			group_targets: solverGroupTargets.length ? solverGroupTargets : undefined,
 			group_availability: solverGroupTargets.length ? groupAvailability : undefined,
 			group_duration_minutes: solverGroupTargets.length ? groupDurationMinutes : undefined,
+			existing_lessons: existingLessons.length > 0 ? existingLessons : undefined,
 		})
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err)

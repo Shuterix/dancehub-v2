@@ -4,7 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { ChevronLeft, Calendar, Loader2, UsersRound, GraduationCap, Clock, Sparkles, CalendarDays, Settings, User, BookOpen, Power, PowerOff } from "lucide-react"
+import { ChevronLeft, Calendar, Loader2, GraduationCap, Clock, Sparkles, Settings, User, BookOpen, Power, PowerOff } from "lucide-react"
+import {
+	DndContext,
+	MouseSensor,
+	TouchSensor,
+	useDraggable,
+	useDroppable,
+	useSensor,
+	useSensors,
+	type DragEndEvent,
+} from "@dnd-kit/core"
+import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,9 +42,14 @@ type LessonItem = {
 	lesson_type: string
 	start_at: string
 	end_at: string
+	room_id?: string | null
 	room_name: string | null
 	trainer_id: string | null
 	trainer_name: string | null
+	student_id?: string | null
+	couple_id?: string | null
+	group_id?: string | null
+	group_lesson_type_id?: string | null
 	label: string
 	is_static: boolean
 	cancelled_at?: string | null
@@ -79,11 +95,7 @@ const RECURRENCE_LABELS: Record<string, string> = {
 	fixed_period: "Fixed period",
 }
 
-const PRIORITY_COLOR: Record<string, string> = {
-	high: "bg-green-500/20 text-green-700 dark:text-green-300",
-	medium: "bg-amber-500/20 text-amber-700 dark:text-amber-300",
-	low: "bg-muted text-muted-foreground",
-}
+// Note: priority colors are defined in settings UI, not used here directly.
 
 type TimetableDetail = {
 	timetable: {
@@ -287,10 +299,10 @@ export default function TimetableDetailPage({
 			} else {
 				toast.warning(
 					"No lessons were created. Check that targets and trainers have availability overlapping the schedule window (e.g. " +
-						(data?.timetable?.day_start ?? "08:00") +
-						"–" +
-						(data?.timetable?.day_end ?? "22:00") +
-						")."
+					(data?.timetable?.day_start ?? "08:00") +
+					"–" +
+					(data?.timetable?.day_end ?? "22:00") +
+					")."
 				)
 			}
 			loadLessons()
@@ -342,7 +354,7 @@ export default function TimetableDetailPage({
 		)
 	}
 
-	const { timetable, preferences, targets, trainer_limits } = data
+	const { timetable, targets } = data
 
 	const hasActiveFilters = filterLabels.size > 0 || filterTrainerIds.size > 0 || filterTypes.size > 0
 	function clearFilters() {
@@ -409,11 +421,11 @@ export default function TimetableDetailPage({
 						</Link>
 					</Button>
 					<div className="min-w-0">
-						<h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground break-words min-w-0">
+						<h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground wrap-break-word min-w-0">
 							<Calendar className="size-5 shrink-0" />
 							{timetable.name}
 						</h1>
-						<p className="text-muted-foreground text-xs sm:text-sm break-words min-w-0">
+						<p className="text-muted-foreground text-xs sm:text-sm wrap-break-word min-w-0">
 							{RECURRENCE_LABELS[timetable.recurrence] ?? timetable.recurrence} · {formatDate(timetable.valid_from)}
 						</p>
 					</div>
@@ -437,7 +449,7 @@ export default function TimetableDetailPage({
 				</div>
 			</div>
 
-				<div className="flex flex-col gap-2">
+			<div className="flex flex-col gap-2">
 				<div className="flex items-center justify-between gap-2">
 					<label htmlFor="week-start" className="text-sm font-medium text-muted-foreground">
 						{data?.timetable?.recurrence === "weekends_only" ? "Weekend (pick any day)" : "Week"}
@@ -532,11 +544,38 @@ export default function TimetableDetailPage({
 								No lessons match the current filters. Clear filters or change selection.
 							</p>
 						) : (
-						<LessonGrid
-							lessons={filteredLessons}
-							weekStart={weekStart}
-							onLessonClick={setSelectedLesson}
-						/>
+							<LessonGrid
+								lessons={filteredLessons}
+								weekStart={weekStart}
+								onLessonClick={setSelectedLesson}
+								onLessonMove={async (lessonId, date, time) => {
+									// Find original lesson to avoid unnecessary calls
+									const original = lessons.find((l) => l.id === lessonId)
+									if (!original) return
+									const originalDate = original.start_at.slice(0, 10)
+									const originalTime = original.start_at.slice(11, 16)
+									if (originalDate === date && originalTime === time) return
+									try {
+										const res = await fetch(`/api/club/timetables/${id}/lessons/${lessonId}`, {
+											method: "PATCH",
+											headers: { "Content-Type": "application/json" },
+											body: JSON.stringify({ date, start_time: time }),
+										})
+										const json = await res.json().catch(() => ({}))
+										if (!res.ok) {
+											const details = Array.isArray(json.issues) ? json.issues.join("\n") : undefined
+											toast.error(json.error ?? "Unable to move lesson", {
+												description: details,
+											})
+											return
+										}
+										toast.success("Lesson rescheduled")
+										loadLessons()
+									} catch {
+										toast.error("Unable to move lesson")
+									}
+								}}
+							/>
 						)}
 					</>
 				)}
@@ -586,7 +625,14 @@ export default function TimetableDetailPage({
 				</>
 			)}
 
-			<LessonDetailDialog lesson={selectedLesson} open={!!selectedLesson} onOpenChange={(open) => !open && setSelectedLesson(null)} />
+			<LessonDetailDialog
+				lesson={selectedLesson}
+				open={!!selectedLesson}
+				onOpenChange={(open) => !open && setSelectedLesson(null)}
+				timetableId={id}
+				targets={targets}
+				onUpdated={loadLessons}
+			/>
 			<SettingsDialog
 				open={settingsOpen}
 				onOpenChange={setSettingsOpen}
@@ -627,7 +673,7 @@ function SettingsDialog({
 	distribution: string
 	setWeekStart: (s: string) => void
 	setDistribution: (s: string) => void
-		onSaved: () => void | Promise<void>
+	onSaved: () => void | Promise<void>
 	onGenerated: () => void
 	onGenerate: (opts?: { group_targets?: Array<{ group_id: string; group_lesson_type_id: string; desired_lessons_count: number; priority?: string; preferred_trainer_id?: string | null }> }) => Promise<void>
 	generating: boolean
@@ -1123,16 +1169,41 @@ function TimetableStats({ lessons }: { lessons: LessonItem[] }) {
 	)
 }
 
-function LessonDetailDialog({
-	lesson,
-	open,
-	onOpenChange,
-}: {
+function LessonDetailDialog(props: {
 	lesson: LessonItem | null
 	open: boolean
 	onOpenChange: (open: boolean) => void
+	timetableId: string
+	targets: TimetableDetail["targets"]
+	onUpdated: () => void
 }) {
+	const { lesson, ...rest } = props
 	if (!lesson) return null
+	return <LessonDetailDialogInner lesson={lesson} {...rest} />
+}
+
+function LessonDetailDialogInner({
+	lesson,
+	open,
+	onOpenChange,
+	timetableId,
+	targets,
+	onUpdated,
+}: {
+	lesson: LessonItem
+	open: boolean
+	onOpenChange: (open: boolean) => void
+	timetableId: string
+	targets: TimetableDetail["targets"]
+	onUpdated: () => void
+}) {
+	const [selectedTargetId, setSelectedTargetId] = useState<string | null>(() => {
+		const match = targets.find(
+			(t) => t.student_id === (lesson.student_id ?? null) && t.couple_id === (lesson.couple_id ?? null)
+		)
+		return match?.id ?? null
+	})
+	const [saving, setSaving] = useState(false)
 	const dayLabel = (() => {
 		try {
 			return new Date(lesson.start_at.slice(0, 10) + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" })
@@ -1148,6 +1219,37 @@ function LessonDetailDialog({
 		}
 	})()
 	const isCancelled = !!lesson.cancelled_at
+
+	const handleSave = async () => {
+		if (!lesson) return
+		const currentTarget = targets.find(
+			(t) => t.student_id === (lesson.student_id ?? null) && t.couple_id === (lesson.couple_id ?? null)
+		)
+		if (!selectedTargetId || currentTarget?.id === selectedTargetId) {
+			onOpenChange(false)
+			return
+		}
+		setSaving(true)
+		try {
+			const res = await fetch(`/api/club/timetables/${timetableId}/lessons/${lesson.id}/participant`, {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ target_id: selectedTargetId }),
+			})
+			const json = await res.json().catch(() => ({}))
+			if (!res.ok) {
+				toast.error(json.error ?? "Failed to update lesson")
+				return
+			}
+			toast.success("Lesson updated")
+			onUpdated()
+			onOpenChange(false)
+		} catch {
+			toast.error("Failed to update lesson")
+		} finally {
+			setSaving(false)
+		}
+	}
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-h-[90vh] overflow-y-auto w-[calc(100vw-2rem)] max-w-lg">
@@ -1158,7 +1260,7 @@ function LessonDetailDialog({
 							<Badge variant="secondary" className="font-normal">Canceled</Badge>
 						)}
 					</div>
-					<DialogDescription>Lesson details</DialogDescription>
+					<DialogDescription>Edit lesson participant and view details.</DialogDescription>
 				</DialogHeader>
 				<dl className="grid gap-4 text-sm">
 					<div>
@@ -1186,7 +1288,34 @@ function LessonDetailDialog({
 						<dd className="font-medium text-base capitalize">{lesson.lesson_type}</dd>
 					</div>
 				</dl>
-				<p className="text-muted-foreground text-xs mt-2">Tap outside to close</p>
+				<div className="mt-4 space-y-2">
+					<p className="text-muted-foreground text-xs uppercase tracking-wide">Participant</p>
+					<Select
+						value={selectedTargetId ?? "__none__"}
+						onValueChange={(v) => setSelectedTargetId(v === "__none__" ? null : v)}
+					>
+						<SelectTrigger className="w-full">
+							<SelectValue placeholder="Choose participant" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="__none__">No participant</SelectItem>
+							{targets.map((t) => (
+								<SelectItem key={t.id} value={t.id}>
+									{t.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+				<div className="mt-4 flex justify-end gap-2">
+					<Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+						Cancel
+					</Button>
+					<Button size="sm" onClick={handleSave} disabled={saving}>
+						{saving && <Loader2 className="size-4 animate-spin mr-1" />}
+						Save
+					</Button>
+				</div>
 			</DialogContent>
 		</Dialog>
 	)
@@ -1196,10 +1325,12 @@ function LessonGrid({
 	lessons,
 	weekStart,
 	onLessonClick,
+	onLessonMove,
 }: {
 	lessons: LessonItem[]
 	weekStart: string
 	onLessonClick: (lesson: LessonItem) => void
+	onLessonMove: (lessonId: string, date: string, time: string) => void
 }) {
 	const mondayStr = weekMonday(weekStart)
 	const days: { date: string; label: string }[] = []
@@ -1229,7 +1360,8 @@ function LessonGrid({
 		}
 		return trainerOrder.map((id) => names.get(id) ?? "Trainer")
 	}, [lessons, trainerOrder])
-	const byDay = useMemo(() => {
+
+	const byDay = (() => {
 		const map = new Map<string, LessonItem[]>()
 		for (const l of lessons) {
 			const d = l.start_at.slice(0, 10)
@@ -1238,113 +1370,199 @@ function LessonGrid({
 		}
 		for (const arr of map.values()) arr.sort((a, b) => a.start_at.localeCompare(b.start_at))
 		return days.filter((d) => map.has(d.date)).map((d) => ({ ...d, lessons: map.get(d.date)! }))
-	}, [lessons, weekStart])
+	})()
+
+	const sensors = useSensors(
+		useSensor(MouseSensor, {
+			activationConstraint: { delay: 150, tolerance: 5 },
+		}),
+		useSensor(TouchSensor, {
+			activationConstraint: { delay: 200, tolerance: 8 },
+		})
+	)
+
+	function handleDragEnd(event: DragEndEvent) {
+		const { active, over } = event
+		if (!over) return
+		const lessonId = String(active.id)
+		const slotKey = String(over.id)
+		const [date, time] = slotKey.split("_")
+		if (!date || !time) return
+		onLessonMove(lessonId, date, time)
+	}
 
 	return (
-		<div className="space-y-3">
-			{trainerOrder.length > 0 && (
-				<div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-					<span className="font-medium">Trainers:</span>
-					{trainerOrder.map((id, i) => (
-						<span key={id} className="flex items-center gap-1.5">
-							<span className={cn("inline-block h-3 w-3 rounded-sm", TRAINER_SWATCH[i % TRAINER_SWATCH.length])} />
-							<span>{trainerNames[i]}</span>
-						</span>
+		<DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+			<div className="space-y-3">
+				{trainerOrder.length > 0 && (
+					<div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+						<span className="font-medium">Trainers:</span>
+						{trainerOrder.map((id, i) => (
+							<span key={id} className="flex items-center gap-1.5">
+								<span className={cn("inline-block h-3 w-3 rounded-sm", TRAINER_SWATCH[i % TRAINER_SWATCH.length])} />
+								<span>{trainerNames[i]}</span>
+							</span>
+						))}
+					</div>
+				)}
+				{/* Mobile: list by day — tap row for details */}
+				<div className="md:hidden space-y-4">
+					{byDay.map(({ date, label, lessons: dayLessons }) => (
+						<section key={date}>
+							<h3 className="text-sm font-medium text-muted-foreground sticky top-0 bg-background/95 py-1 -mx-1 px-1">
+								{label} {date.slice(8)}
+							</h3>
+							<ul className="space-y-1 mt-1">
+								{dayLessons.map((l) => (
+									<DraggableLesson
+										key={l.id}
+										lesson={l}
+										trainerOrder={trainerOrder}
+										onLessonClick={onLessonClick}
+										variant="list"
+									/>
+								))}
+							</ul>
+						</section>
 					))}
 				</div>
-			)}
-			{/* Mobile: list by day — tap row for details */}
-			<div className="md:hidden space-y-4">
-				{byDay.map(({ date, label, lessons: dayLessons }) => (
-					<section key={date}>
-						<h3 className="text-sm font-medium text-muted-foreground sticky top-0 bg-background/95 py-1 -mx-1 px-1">
-							{label} {date.slice(8)}
-						</h3>
-						<ul className="space-y-1 mt-1">
-							{dayLessons.map((l) => {
-								const isCancelled = !!l.cancelled_at
-								return (
-									<li
-										key={l.id}
-										role="button"
-										tabIndex={0}
-										onClick={() => onLessonClick(l)}
-										onKeyDown={(e) => e.key === "Enter" && onLessonClick(l)}
-										className={cn(
-											"flex items-center gap-2 rounded-lg py-3 px-3 min-h-[44px] cursor-pointer active:opacity-90 border-l-4",
-											TRAINER_COLORS[getTrainerColorIndex(l.trainer_id, trainerOrder)],
-											isCancelled && "opacity-70"
-										)}
-									>
-										<span className="text-muted-foreground text-sm shrink-0 w-14">{formatTimeRange(l.start_at, l.end_at)}</span>
-										<span className="font-medium min-w-0 break-words">{l.label}</span>
-										{isCancelled && (
-											<span className="shrink-0 text-xs text-muted-foreground font-normal">Canceled</span>
-										)}
-									</li>
-								)
-							})}
-						</ul>
-					</section>
-				))}
-			</div>
-			{/* Desktop: table with minimal cards (label only), tap for details */}
-			<div className="hidden md:block overflow-x-auto">
-				<table className="w-full min-w-[600px] border-collapse text-sm">
-					<thead>
-						<tr>
-							<th className="border-b border-border bg-muted/30 px-2 py-2 text-left font-medium">Time</th>
-							{days.map((d) => (
-								<th key={d.date} className="border-b border-border bg-muted/30 px-2 py-2 text-left font-medium">
-									{d.label} {d.date.slice(8)}
-								</th>
-							))}
-						</tr>
-					</thead>
-					<tbody>
-						{timeSlots.map((time) => (
-							<tr key={time}>
-								<td className="border-b border-border/70 px-2 py-1.5 font-medium text-muted-foreground">{time}</td>
-								{days.map((d) => {
-									const key = `${d.date}_${time}`
-									const cellLessons = bySlot.get(key) ?? []
-									return (
-										<td key={d.date} className="border-b border-border/70 px-2 py-1.5 align-top">
-											{cellLessons.length === 0 ? (
-												<span className="text-muted-foreground">—</span>
-											) : (
-												<ul className="space-y-1">
-													{cellLessons.map((l) => {
-														const isCancelled = !!l.cancelled_at
-														return (
-															<li
-																key={l.id}
-																role="button"
-																tabIndex={0}
-																onClick={() => onLessonClick(l)}
-																onKeyDown={(e) => e.key === "Enter" && onLessonClick(l)}
-																className={cn(
-																	"cursor-pointer rounded px-2 py-1 text-xs font-medium break-words max-w-[120px] transition-opacity hover:opacity-90 border-l-2",
-																	TRAINER_COLORS[getTrainerColorIndex(l.trainer_id, trainerOrder)],
-																	isCancelled && "opacity-70"
-																)}
-																title={isCancelled ? "Canceled" : "Tap for details"}
-															>
-																{l.label}
-																{isCancelled && " (Canceled)"}
-															</li>
-														)
-													})}
-												</ul>
-											)}
-										</td>
-									)
-								})}
+				{/* Desktop: table with minimal cards (label only), tap for details */}
+				<div className="hidden md:block overflow-x-auto">
+					<table className="w-full min-w-[600px] border-collapse text-sm">
+						<thead>
+							<tr>
+								<th className="border-b border-border bg-muted/30 px-2 py-2 text-left font-medium">Time</th>
+								{days.map((d) => (
+									<th key={d.date} className="border-b border-border bg-muted/30 px-2 py-2 text-left font-medium">
+										{d.label} {d.date.slice(8)}
+									</th>
+								))}
 							</tr>
-						))}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{timeSlots.map((time) => (
+								<tr key={time}>
+									<td className="border-b border-border/70 px-2 py-1.5 font-medium text-muted-foreground">{time}</td>
+									{days.map((d) => {
+										const key = `${d.date}_${time}`
+										const cellLessons = bySlot.get(key) ?? []
+										return (
+											<SlotCell key={d.date} id={key} className="border-b border-border/70 px-2 py-1.5 align-top">
+												{cellLessons.length === 0 ? (
+													<span className="text-muted-foreground">—</span>
+												) : (
+													<ul className="space-y-1">
+														{cellLessons.map((l) => (
+															<DraggableLesson
+																key={l.id}
+																lesson={l}
+																trainerOrder={trainerOrder}
+																onLessonClick={onLessonClick}
+																variant="grid"
+															/>
+														))}
+													</ul>
+												)}
+											</SlotCell>
+										)
+									})}
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
 			</div>
-		</div>
+		</DndContext>
+	)
+}
+
+function SlotCell({
+	id,
+	className,
+	children,
+}: {
+	id: string
+	className?: string
+	children: React.ReactNode
+}) {
+	const { setNodeRef, isOver } = useDroppable({ id })
+	return (
+		<td
+			ref={setNodeRef}
+			className={cn(className, isOver && "bg-muted/40")}
+		>
+			{children}
+		</td>
+	)
+}
+
+function DraggableLesson({
+	lesson,
+	trainerOrder,
+	onLessonClick,
+	variant,
+}: {
+	lesson: LessonItem
+	trainerOrder: string[]
+	onLessonClick: (lesson: LessonItem) => void
+	variant: "list" | "grid"
+}) {
+	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+		id: lesson.id,
+		data: { lessonId: lesson.id },
+	})
+	const style = transform ? { transform: CSS.Transform.toString(transform) } : undefined
+	const isCancelled = !!lesson.cancelled_at
+
+	if (variant === "list") {
+		return (
+			<li
+				ref={setNodeRef}
+				style={style}
+				{...listeners}
+				{...attributes}
+				role="button"
+				tabIndex={0}
+				onClick={() => onLessonClick(lesson)}
+				onKeyDown={(e) => e.key === "Enter" && onLessonClick(lesson)}
+				className={cn(
+					"flex items-center gap-2 rounded-lg py-3 px-3 min-h-[44px] cursor-pointer active:opacity-90 border-l-4",
+					TRAINER_COLORS[getTrainerColorIndex(lesson.trainer_id, trainerOrder)],
+					isCancelled && "opacity-70",
+					isDragging && "z-10 opacity-80"
+				)}
+			>
+				<span className="text-muted-foreground text-sm shrink-0 w-14">
+					{formatTimeRange(lesson.start_at, lesson.end_at)}
+				</span>
+				<span className="font-medium min-w-0 wrap-break-word">{lesson.label}</span>
+				{isCancelled && (
+					<span className="shrink-0 text-xs text-muted-foreground font-normal">Canceled</span>
+				)}
+			</li>
+		)
+	}
+
+	return (
+		<li
+			ref={setNodeRef}
+			style={style}
+			{...listeners}
+			{...attributes}
+			role="button"
+			tabIndex={0}
+			onClick={() => onLessonClick(lesson)}
+			onKeyDown={(e) => e.key === "Enter" && onLessonClick(lesson)}
+			className={cn(
+				"cursor-pointer rounded px-2 py-1 text-xs font-medium wrap-break-word max-w-[120px] transition-opacity hover:opacity-90 border-l-2",
+				TRAINER_COLORS[getTrainerColorIndex(lesson.trainer_id, trainerOrder)],
+				isCancelled && "opacity-70",
+				isDragging && "z-10 opacity-80"
+			)}
+			title={isCancelled ? "Canceled" : "Tap for details"}
+		>
+			{lesson.label}
+			{isCancelled && " (Canceled)"}
+		</li>
 	)
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, test } from "vitest"
 import {
 	isAvailableAtSlot,
 	buildWeekSlots,
@@ -10,6 +10,11 @@ import type { AvailabilitySlot } from "./availability"
 function slot(day: string, start: string, end: string): AvailabilitySlot {
 	return { day, start, end }
 }
+
+// Simple smoke test so Vitest always registers at least one test task in this file
+test("timetable solver test file loads", () => {
+	expect(true).toBe(true)
+})
 
 describe("isAvailableAtSlot", () => {
 	it("returns true when availability is empty (no constraints)", () => {
@@ -203,6 +208,100 @@ describe("solveTimetable", () => {
 			} else if (dayName === "thursday") {
 				expect(time >= "15:00" && time < "17:00").toBe(true)
 			}
+		}
+	})
+
+	it("with distribution 'same' and full-week availability, spreads a single target's lessons across multiple days", () => {
+		const studentId = "student-1"
+		const trainerId = "trainer-1"
+		const fullWeekAvailability: AvailabilitySlot[] = [
+			slot("monday", "15:00", "20:00"),
+			slot("tuesday", "15:00", "20:00"),
+			slot("wednesday", "15:00", "20:00"),
+			slot("thursday", "15:00", "20:00"),
+			slot("friday", "15:00", "20:00"),
+			slot("saturday", "09:00", "18:00"),
+			slot("sunday", "09:00", "18:00"),
+		]
+
+		const input = defaultInput({
+			week_start_monday: "2026-03-09", // Monday
+			day_start: "15:00",
+			day_end: "18:00",
+			duration_minutes: 45,
+			distribution: "same",
+			targets: [
+				{
+					id: "t1",
+					student_id: studentId,
+					couple_id: null,
+					desired_lessons_count: 4,
+					priority: "medium",
+					preferred_trainer_id: null,
+				},
+			],
+			target_availability: new Map([[studentId, fullWeekAvailability]]),
+			trainer_ids: [trainerId],
+			trainer_availability: new Map([[trainerId, fullWeekAvailability]]),
+		})
+
+		const lessons = solveTimetable(input)
+		expect(lessons).toHaveLength(4)
+		const dates = [...new Set(lessons.map((l) => l.start_at.slice(0, 10)))]
+		// With plenty of availability and Spread, we expect lessons to land on at least 3 different days.
+		expect(dates.length).toBeGreaterThanOrEqual(3)
+	})
+
+	it("with distribution 'same' and one trainer, multiple targets are scheduled on different days when availability allows", () => {
+		const trainerId = "trainer-1"
+		const fullWeekAvailability: AvailabilitySlot[] = [
+			slot("monday", "15:00", "20:00"),
+			slot("tuesday", "15:00", "20:00"),
+			slot("wednesday", "15:00", "20:00"),
+			slot("thursday", "15:00", "20:00"),
+			slot("friday", "15:00", "20:00"),
+		]
+
+		const targets = [
+			{ id: "t1", student_id: "s1" },
+			{ id: "t2", student_id: "s2" },
+			{ id: "t3", student_id: "s3" },
+		] as const
+
+		const input = defaultInput({
+			week_start_monday: "2026-03-09",
+			day_start: "15:00",
+			day_end: "17:00",
+			duration_minutes: 45,
+			distribution: "same",
+			targets: targets.map((t) => ({
+				id: t.id,
+				student_id: t.student_id,
+				couple_id: null,
+				desired_lessons_count: 2,
+				priority: "medium",
+				preferred_trainer_id: null,
+			})),
+			target_availability: new Map(
+				targets.map((t) => [t.student_id, fullWeekAvailability] as [string, AvailabilitySlot[]])
+			),
+			trainer_ids: [trainerId],
+			trainer_availability: new Map([[trainerId, fullWeekAvailability]]),
+		})
+
+		const lessons = solveTimetable(input)
+		expect(lessons).toHaveLength(targets.length * 2)
+
+		// For each target, check that their two lessons are not both on the same day when the week has enough free slots.
+		for (const t of targets) {
+			const perTargetDates = [
+				...new Set(
+					lessons
+						.filter((l) => l.student_id === t.student_id)
+						.map((l) => l.start_at.slice(0, 10))
+				),
+			]
+			expect(perTargetDates.length).toBeGreaterThanOrEqual(2)
 		}
 	})
 
@@ -448,5 +547,107 @@ describe("solveTimetable", () => {
 
 	it("isAvailableAtSlot: null/undefined availability treated as available", () => {
 		expect(isAvailableAtSlot([], "2026-02-23", "09:00", "09:45")).toBe(true)
+	})
+
+	it("avoids trainer conflict with existing_lessons from other timetables", () => {
+		const input = defaultInput({
+			targets: [
+				{
+					id: "t1",
+					student_id: "s1",
+					couple_id: null,
+					desired_lessons_count: 1,
+					priority: "medium",
+					preferred_trainer_id: null,
+				},
+			],
+			target_availability: new Map([["s1", [slot("monday", "09:00", "11:00")]]]),
+			trainer_availability: new Map([["trainer-1", [slot("monday", "09:00", "11:00")]]]),
+			day_start: "09:00",
+			day_end: "11:00",
+			existing_lessons: [
+				{ trainer_id: "trainer-1", room_id: null, start_at: "2026-02-23T09:00:00", end_at: "2026-02-23T09:45:00" },
+			],
+		})
+		const lessons = solveTimetable(input)
+		expect(lessons).toHaveLength(1)
+		expect(lessons[0].start_at).not.toBe("2026-02-23T09:00:00")
+	})
+
+	it("does not place lesson when trainer is fully busy from existing_lessons", () => {
+		const input = defaultInput({
+			targets: [
+				{
+					id: "t1",
+					student_id: "s1",
+					couple_id: null,
+					desired_lessons_count: 1,
+					priority: "medium",
+					preferred_trainer_id: null,
+				},
+			],
+			target_availability: new Map([["s1", [slot("monday", "09:00", "10:30")]]]),
+			trainer_availability: new Map([["trainer-1", [slot("monday", "09:00", "10:30")]]]),
+			day_start: "09:00",
+			day_end: "10:30",
+			existing_lessons: [
+				{ trainer_id: "trainer-1", room_id: null, start_at: "2026-02-23T09:00:00", end_at: "2026-02-23T09:45:00" },
+				{ trainer_id: "trainer-1", room_id: null, start_at: "2026-02-23T09:45:00", end_at: "2026-02-23T10:30:00" },
+			],
+		})
+		const lessons = solveTimetable(input)
+		expect(lessons).toHaveLength(0)
+	})
+
+	it("avoids room conflict with existing_lessons from other timetables", () => {
+		const input = defaultInput({
+			targets: [
+				{
+					id: "t1",
+					student_id: "s1",
+					couple_id: null,
+					desired_lessons_count: 1,
+					priority: "medium",
+					preferred_trainer_id: null,
+				},
+			],
+			target_availability: new Map([["s1", [slot("monday", "09:00", "10:30")]]]),
+			trainer_availability: new Map([["trainer-1", []]]),
+			day_start: "09:00",
+			day_end: "10:30",
+			room_ids: ["room-1"],
+			existing_lessons: [
+				{ trainer_id: "other-trainer", room_id: "room-1", start_at: "2026-02-23T09:00:00", end_at: "2026-02-23T09:45:00" },
+			],
+		})
+		const lessons = solveTimetable(input)
+		expect(lessons).toHaveLength(1)
+		expect(lessons[0].start_at).toBe("2026-02-23T09:45:00")
+	})
+
+	it("handles existing_lessons with different duration (overlap check)", () => {
+		const input = defaultInput({
+			targets: [
+				{
+					id: "t1",
+					student_id: "s1",
+					couple_id: null,
+					desired_lessons_count: 1,
+					priority: "medium",
+					preferred_trainer_id: null,
+				},
+			],
+			target_availability: new Map([["s1", [slot("monday", "15:00", "18:00")]]]),
+			trainer_availability: new Map([["trainer-1", [slot("monday", "15:00", "18:00")]]]),
+			day_start: "15:00",
+			day_end: "18:00",
+			existing_lessons: [
+				{ trainer_id: "trainer-1", room_id: null, start_at: "2026-02-23T15:00:00", end_at: "2026-02-23T16:30:00" },
+			],
+		})
+		const lessons = solveTimetable(input)
+		expect(lessons).toHaveLength(1)
+		const startMin = parseInt(lessons[0].start_at.slice(11, 13)) * 60 + parseInt(lessons[0].start_at.slice(14, 16))
+		expect(startMin).toBeGreaterThanOrEqual(16 * 60 + 30)
 	})
 })
