@@ -3,6 +3,8 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { isAvailableAtSlot } from "@/lib/timetable-solver"
 import type { AvailabilitySlot } from "@/lib/availability"
+import { getLessonUserIds, loadMemberContext, sharesUser } from "@/lib/lesson-members"
+import { fetchMatchingSiblings } from "@/lib/lesson-pattern"
 
 async function getClubAndAuth(
 	supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>
@@ -63,7 +65,7 @@ export async function PATCH(
 		return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 	}
 
-	let body: { date?: string; start_time?: string } = {}
+	let body: { date?: string; start_time?: string; scope?: "single" | "all_future" } = {}
 	try {
 		body = await request.json()
 	} catch {
@@ -71,6 +73,7 @@ export async function PATCH(
 	}
 
 	const { date, start_time } = body
+	const scope: "single" | "all_future" = body.scope === "all_future" ? "all_future" : "single"
 	if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !start_time || !/^\d{2}:\d{2}$/.test(start_time)) {
 		return NextResponse.json({ error: "Invalid date or time" }, { status: 400 })
 	}
@@ -217,35 +220,62 @@ export async function PATCH(
 		}
 	}
 
-	// Conflicts with other lessons (trainer or room)
-	if (lesson.trainer_id || lesson.room_id) {
-		const { data: others } = await supabase
-			.from("lessons")
-			.select("id, start_at, end_at, trainer_id, room_id")
-			.eq("timetable_id", timetableId)
-			.neq("id", lesson.id)
-			.gte("start_at", `${date}T00:00:00`)
-			.lte("start_at", `${date}T23:59:59.999`)
+	// Conflicts with other lessons (trainer / room / participant / shared member) —
+	// scoped to EVERY active timetable in the club, not just this timetable, so
+	// we don't accidentally move a lesson onto a slot that's already occupied
+	// on another timetable. Member-level expansion catches cross-kind
+	// collisions (e.g. Alice in a couple lesson vs. a group she's in).
+	const memberCtx = await loadMemberContext(supabase, clubId)
+	const lessonUserIds = getLessonUserIds(lesson, memberCtx)
 
-		for (const o of others ?? []) {
-			const oDate = o.start_at.slice(0, 10)
-			if (oDate !== date) continue
-			const oStart = o.start_at.slice(11, 16)
-			const oEnd = o.end_at.slice(11, 16)
-			// Trainer conflict
-			if (lesson.trainer_id && o.trainer_id === lesson.trainer_id) {
-				if (timeOverlaps(newStartTime, newEndTime, oStart, oEnd)) {
-					issues.push("Trainer already has another lesson at this time")
-					break
-				}
-			}
-			// Room conflict
-			if (lesson.room_id && o.room_id === lesson.room_id) {
-				if (timeOverlaps(newStartTime, newEndTime, oStart, oEnd)) {
-					issues.push("Room already has another lesson at this time")
-					break
-				}
-			}
+	const { data: activeTimetables } = await supabase
+		.from("timetables")
+		.select("id")
+		.eq("club_id", clubId)
+		.eq("is_active", true)
+	const activeIds = (activeTimetables ?? []).map((t) => t.id)
+	const scopeIds = activeIds.length > 0 ? activeIds : [timetableId]
+
+	const { data: others } = await supabase
+		.from("lessons")
+		.select("id, start_at, end_at, trainer_id, room_id, student_id, couple_id, group_id")
+		.in("timetable_id", scopeIds)
+		.neq("id", lesson.id)
+		.is("cancelled_at", null)
+		.gte("start_at", `${date}T00:00:00`)
+		.lte("start_at", `${date}T23:59:59.999`)
+
+	for (const o of others ?? []) {
+		const oDate = o.start_at.slice(0, 10)
+		if (oDate !== date) continue
+		const oStart = o.start_at.slice(11, 16)
+		const oEnd = o.end_at.slice(11, 16)
+		if (!timeOverlaps(newStartTime, newEndTime, oStart, oEnd)) continue
+
+		if (lesson.trainer_id && o.trainer_id === lesson.trainer_id) {
+			issues.push("Trainer already has another lesson at this time")
+			break
+		}
+		if (lesson.room_id && o.room_id === lesson.room_id) {
+			issues.push("Room already has another lesson at this time")
+			break
+		}
+		if (lesson.student_id && o.student_id === lesson.student_id) {
+			issues.push("Student already has another lesson at this time")
+			break
+		}
+		if (lesson.couple_id && o.couple_id === lesson.couple_id) {
+			issues.push("Couple already has another lesson at this time")
+			break
+		}
+		if (lesson.group_id && o.group_id === lesson.group_id) {
+			issues.push("Group already has another lesson at this time")
+			break
+		}
+		const otherUserIds = getLessonUserIds(o, memberCtx)
+		if (sharesUser(lessonUserIds, otherUserIds)) {
+			issues.push("One of the participants already has another lesson at this time")
+			break
 		}
 	}
 
@@ -271,6 +301,50 @@ export async function PATCH(
 		return NextResponse.json({ error: updateError?.message ?? "Failed to update lesson" }, { status: 500 })
 	}
 
-	return NextResponse.json({ lesson: updated })
+	// Optionally propagate the same time shift to all other occurrences of
+	// this recurring series. A "series" is inferred from
+	//   (timetable, lesson_type, trainer, participant, weekday, HH:MM)
+	// and — crucially — sibling rank within a week (see lib/lesson-pattern.ts).
+	// This means when two distinct lessons happen to share that fingerprint
+	// in the same week (e.g. legacy data with duplicate placements), moving
+	// the one the user clicked only shifts the corresponding sibling in
+	// every other week, not all same-time lessons.
+	let futureMoved = 0
+	let futureSkipped = 0
+	if (scope === "all_future") {
+		const oldStartMs = new Date(lesson.start_at).getTime()
+		const newStartMs = new Date(newStartAt).getTime()
+		const deltaMs = newStartMs - oldStartMs
+
+		if (deltaMs !== 0) {
+			const siblings = await fetchMatchingSiblings(supabase, {
+				id: lesson.id,
+				timetable_id: timetableId,
+				start_at: lesson.start_at,
+				end_at: lesson.end_at,
+				lesson_type: lesson.lesson_type,
+				trainer_id: lesson.trainer_id ?? null,
+				student_id: lesson.student_id ?? null,
+				couple_id: lesson.couple_id ?? null,
+				group_id: lesson.group_id ?? null,
+			})
+
+			for (const c of siblings) {
+				const newOccStart = new Date(new Date(c.start_at).getTime() + deltaMs)
+				const newOccEnd = new Date(new Date(c.end_at).getTime() + deltaMs)
+				const { error } = await supabase
+					.from("lessons")
+					.update({ start_at: newOccStart.toISOString(), end_at: newOccEnd.toISOString() })
+					.eq("id", c.id)
+				if (error) {
+					futureSkipped++
+				} else {
+					futureMoved++
+				}
+			}
+		}
+	}
+
+	return NextResponse.json({ lesson: updated, future_moved: futureMoved, future_skipped: futureSkipped, scope })
 }
 

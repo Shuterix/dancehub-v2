@@ -16,8 +16,19 @@ export async function GET(request: Request) {
 	const { error } = await supabase.auth.exchangeCodeForSession(code)
 
 	if (error) {
+		// PKCE verifier missing: the OAuth flow was started in a different
+		// browser/tab/device, the link was reopened later, or cookies were
+		// blocked. Send the user back to login with a friendly message
+		// instead of the raw Supabase error.
+		const isPkceError =
+			/code verifier/i.test(error.message) || /pkce/i.test(error.message)
+
+		const friendly = isPkceError
+			? "Your sign-in link expired or was opened in a different browser. Please sign in again from this device."
+			: error.message
+
 		return NextResponse.redirect(
-			new URL(`/auth/login?error=${encodeURIComponent(error.message)}`, request.url)
+			new URL(`/auth/login?error=${encodeURIComponent(friendly)}`, request.url)
 		)
 	}
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { weekStartMonday } from "@/lib/timetable-week"
 
 async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>) {
 	const {
@@ -17,15 +18,6 @@ async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/
 	if (!myProfile?.club_id) return { error: NextResponse.json({ error: "No club" }, { status: 404 }) }
 
 	return { clubId: myProfile.club_id }
-}
-
-/** Monday of the week containing dateStr (YYYY-MM-DD). */
-function weekStartMonday(dateStr: string): string {
-	const d = new Date(dateStr + "T12:00:00")
-	const day = d.getDay()
-	const diff = day === 0 ? -6 : 1 - day
-	d.setDate(d.getDate() + diff)
-	return d.toISOString().slice(0, 10)
 }
 
 export async function GET(

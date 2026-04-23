@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
-import { solveTimetable, type SolverTarget, type SolverGroupTarget, type DistributionPreference, type ExistingLesson } from "@/lib/timetable-solver"
+import {
+	solveTimetable,
+	allowedDaysForDistribution,
+	type SolverTarget,
+	type SolverGroupTarget,
+	type DistributionPreference,
+	type ExistingLesson,
+} from "@/lib/timetable-solver"
 import type { AvailabilitySlot } from "@/lib/availability"
+import { loadMemberContext, getLessonUserIds } from "@/lib/lesson-members"
 
 async function getClubAndAuth(supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>) {
 	const {
@@ -185,7 +193,7 @@ export async function POST(
 
 	const { data: prefs } = await supabase
 		.from("timetable_preferences")
-		.select("individual_lesson_duration_minutes, distribution")
+		.select("individual_lesson_duration_minutes, distribution, max_consecutive_minutes_per_trainer, min_break_minutes_after_consecutive, buffer_between_lessons_minutes")
 		.eq("timetable_id", timetableId)
 		.single()
 	const durationMinutes = prefs?.individual_lesson_duration_minutes ?? 45
@@ -193,6 +201,9 @@ export async function POST(
 		DISTRIBUTION_VALUES.includes(body.distribution as (typeof DISTRIBUTION_VALUES)[number])
 			? (body.distribution as DistributionPreference)
 			: (prefs?.distribution as DistributionPreference | undefined) ?? "same"
+	const bufferMinutes = Math.max(0, Number(prefs?.buffer_between_lessons_minutes ?? 0) || 0)
+	const maxConsecutiveMinutes = Math.max(0, Number(prefs?.max_consecutive_minutes_per_trainer ?? 0) || 0)
+	const minBreakMinutes = Math.max(0, Number(prefs?.min_break_minutes_after_consecutive ?? 0) || 0)
 	const dayStart = timetable.day_start ?? "08:00"
 	const dayEnd = timetable.day_end ?? "22:00"
 
@@ -277,6 +288,12 @@ export async function POST(
 		trainerAvailability.set(p.id, av)
 	}
 
+	// Load member context once so every solver input (targets, group targets,
+	// existing cross-timetable lessons) can carry the individual user IDs it
+	// occupies. This is what makes the solver member-aware: Alice in a couple
+	// lesson and Alice as a group member cannot be placed at the same time.
+	const memberContext = await loadMemberContext(supabase, clubId)
+
 	const solverTargets: SolverTarget[] = (targets ?? []).map((t) => ({
 		id: t.id,
 		student_id: t.student_id ?? null,
@@ -284,6 +301,10 @@ export async function POST(
 		desired_lessons_count: t.desired_lessons_count,
 		priority: (t.priority as "high" | "medium" | "low") ?? "medium",
 		preferred_trainer_id: t.preferred_trainer_id ?? null,
+		user_ids: getLessonUserIds(
+			{ student_id: t.student_id ?? null, couple_id: t.couple_id ?? null, group_id: null },
+			memberContext,
+		),
 	}))
 
 	const groupAvailability = new Map<string, AvailabilitySlot[]>()
@@ -319,6 +340,10 @@ export async function POST(
 				desired_lessons_count: gt.desired_lessons_count,
 				priority: (gt.priority as "high" | "medium" | "low") ?? "medium",
 				preferred_trainer_id: gt.preferred_trainer_id ?? null,
+				user_ids: getLessonUserIds(
+					{ student_id: null, couple_id: null, group_id: gt.group_id },
+					memberContext,
+				),
 			})
 		}
 	}
@@ -342,19 +367,28 @@ export async function POST(
 	if (otherIds.length > 0) {
 		const { data: extLessons } = await supabase
 			.from("lessons")
-			.select("trainer_id, room_id, start_at, end_at")
+			.select("trainer_id, room_id, start_at, end_at, student_id, couple_id, group_id")
 			.in("timetable_id", otherIds)
 			.is("cancelled_at", null)
 			.gte("start_at", weekStartMonday + "T00:00:00")
 			.lte("start_at", weekEndForQuery + "T23:59:59")
-		existingLessons = (extLessons ?? [])
-			.filter((l): l is typeof l & { trainer_id: string } => !!l.trainer_id)
-			.map((l) => ({
-				trainer_id: l.trainer_id,
-				room_id: l.room_id ?? null,
-				start_at: l.start_at,
-				end_at: l.end_at,
-			}))
+		existingLessons = (extLessons ?? []).map((l) => ({
+			trainer_id: l.trainer_id ?? null,
+			room_id: l.room_id ?? null,
+			student_id: l.student_id ?? null,
+			couple_id: l.couple_id ?? null,
+			group_id: l.group_id ?? null,
+			start_at: l.start_at,
+			end_at: l.end_at,
+			user_ids: getLessonUserIds(
+				{
+					student_id: l.student_id ?? null,
+					couple_id: l.couple_id ?? null,
+					group_id: l.group_id ?? null,
+				},
+				memberContext,
+			),
+		}))
 	}
 
 	let lessons: Awaited<ReturnType<typeof solveTimetable>>
@@ -376,6 +410,10 @@ export async function POST(
 			group_availability: solverGroupTargets.length ? groupAvailability : undefined,
 			group_duration_minutes: solverGroupTargets.length ? groupDurationMinutes : undefined,
 			existing_lessons: existingLessons.length > 0 ? existingLessons : undefined,
+			buffer_minutes: bufferMinutes,
+			max_consecutive_minutes: maxConsecutiveMinutes,
+			min_break_minutes: minBreakMinutes,
+			only_weekend_days: isWeekendsOnly,
 		})
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err)
@@ -438,15 +476,61 @@ export async function POST(
 		}
 	}
 
-	// Shortfalls: who got fewer lessons than desired (no more available time)
-	type Shortfall = { target_id?: string; group_id?: string; group_lesson_type_id?: string; desired_lessons_count: number; actual_count: number }
+	// Shortfalls: who got fewer lessons than desired and why
+	type Shortfall = {
+		target_id?: string
+		group_id?: string
+		group_lesson_type_id?: string
+		desired_lessons_count: number
+		actual_count: number
+		reason: string
+	}
+
+	const distributionLabel: Record<DistributionPreference, string> = {
+		same: "the selected days",
+		first_half: "Mon–Wed",
+		second_half: "Thu–Sun",
+	}
+	const allowedDays = allowedDaysForDistribution(distribution)
+	// When the timetable is weekends-only, further restrict to Sat/Sun
+	const effectiveAllowedDays = isWeekendsOnly
+		? new Set<string>([...allowedDays].filter((d) => d === "saturday" || d === "sunday"))
+		: allowedDays
+	const allowedDaysLabel = isWeekendsOnly
+		? "Sat–Sun"
+		: distributionLabel[distribution]
+
+	function availabilityHasAllowedDay(av: AvailabilitySlot[] | undefined): boolean {
+		if (!av || av.length === 0) return true // empty = available any day
+		return av.some((s) => effectiveAllowedDays.has(s.day.toLowerCase()))
+	}
+
+	function reasonFor(av: AvailabilitySlot[] | undefined, actual: number): string {
+		if (!availabilityHasAllowedDay(av)) {
+			return `No availability on ${allowedDaysLabel}. Update their availability or change the distribution.`
+		}
+		if (actual === 0 && (roomIds.length === 0 || trainerIds.length === 0)) {
+			return trainerIds.length === 0
+				? "No trainers configured for this timetable."
+				: "No rooms configured for this club."
+		}
+		return "No free trainer or room matched their available times (capacity reached)."
+	}
+
 	const shortfalls: Shortfall[] = []
 	for (const t of targets ?? []) {
 		const actual = lessons.filter(
 			(l) => l.student_id === t.student_id && l.couple_id === t.couple_id
 		).length
 		if (actual < t.desired_lessons_count) {
-			shortfalls.push({ target_id: t.id, desired_lessons_count: t.desired_lessons_count, actual_count: actual })
+			const key = (t.student_id ?? t.couple_id ?? "") as string
+			const av = targetAvailability.get(key)
+			shortfalls.push({
+				target_id: t.id,
+				desired_lessons_count: t.desired_lessons_count,
+				actual_count: actual,
+				reason: reasonFor(av, actual),
+			})
 		}
 	}
 	for (const gt of groupTargets ?? []) {
@@ -454,11 +538,13 @@ export async function POST(
 			(l) => l.group_id === gt.group_id && l.group_lesson_type_id === gt.group_lesson_type_id
 		).length
 		if (actual < gt.desired_lessons_count) {
+			const av = groupAvailability.get(gt.group_id)
 			shortfalls.push({
 				group_id: gt.group_id,
 				group_lesson_type_id: gt.group_lesson_type_id,
 				desired_lessons_count: gt.desired_lessons_count,
 				actual_count: actual,
+				reason: reasonFor(av, actual),
 			})
 		}
 	}
