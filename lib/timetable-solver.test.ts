@@ -445,6 +445,39 @@ describe("solveTimetable", () => {
 		expect(lessons.every((l) => l.trainer_id === "trainer-A")).toBe(true)
 	})
 
+	it("does not assign a different trainer when preferred_trainer cannot cover all lessons", () => {
+		// trainer-A only has one 45-minute window on Monday; need 2 lessons → at most one with A.
+		// trainer-B is fully free — must NOT receive the second lesson for this target.
+		const input = defaultInput({
+			week_start_monday: "2026-02-23",
+			duration_minutes: 45,
+			targets: [
+				{
+					id: "t1",
+					student_id: "s1",
+					couple_id: null,
+					desired_lessons_count: 2,
+					priority: "medium",
+					preferred_trainer_id: "trainer-A",
+				},
+			],
+			trainer_ids: ["trainer-A", "trainer-B"],
+			trainer_availability: new Map([
+				["trainer-A", [slot("monday", "09:00", "09:45")]],
+				["trainer-B", []],
+			]),
+			trainer_limits: new Map([
+				["trainer-A", 8],
+				["trainer-B", 8],
+			]),
+			target_availability: new Map([["s1", []]]),
+			room_ids: ["r1"],
+		})
+		const lessons = solveTimetable(input)
+		expect(lessons).toHaveLength(1)
+		expect(lessons[0]?.trainer_id).toBe("trainer-A")
+	})
+
 	it("sorts targets by priority (high first)", () => {
 		const input = defaultInput({
 			targets: [

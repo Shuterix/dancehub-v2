@@ -441,7 +441,6 @@ export async function POST(
 		"T23:59:59.999"
 	const weekStartTs = weekStartMonday + "T00:00:00.000"
 
-	// Delete non-static lessons: for recurring (weekly/bi_weekly/monthly) delete from this week through valid_until or 52 weeks; for fixed_period delete only this week
 	const recurrence = (timetable as { recurrence?: string }).recurrence ?? "weekly"
 	const validUntil = (timetable as { valid_until?: string | null }).valid_until ?? null
 	const isRecurring = recurrence === "weekly" || recurrence === "weekends_only" || recurrence === "bi_weekly" || recurrence === "monthly"
@@ -454,29 +453,8 @@ export async function POST(
 					return e.toISOString().slice(0, 19).replace("T", "T") + ".999"
 				})()
 		: weekEndStr
-	const { data: toDelete, error: listError } = await supabase
-		.from("lessons")
-		.select("id")
-		.eq("timetable_id", timetableId)
-		.eq("is_static", false)
-		.gte("start_at", weekStartTs)
-		.lte("start_at", periodEnd)
-	if (listError) {
-		return NextResponse.json({ error: listError.message }, { status: 500 })
-	}
-	const idsToDelete = (toDelete ?? []).map((r) => r.id)
-	if (idsToDelete.length > 0) {
-		// Delete in chunks to avoid query size limits
-		for (let i = 0; i < idsToDelete.length; i += 200) {
-			const chunk = idsToDelete.slice(i, i + 200)
-			const { error: delError } = await supabase.from("lessons").delete().in("id", chunk)
-			if (delError) {
-				return NextResponse.json({ error: delError.message }, { status: 500 })
-			}
-		}
-	}
 
-	// Shortfalls: who got fewer lessons than desired and why
+	// Shortfalls: who got fewer lessons than desired and why (computed before any DB writes)
 	type Shortfall = {
 		target_id?: string
 		group_id?: string
@@ -505,7 +483,11 @@ export async function POST(
 		return av.some((s) => effectiveAllowedDays.has(s.day.toLowerCase()))
 	}
 
-	function reasonFor(av: AvailabilitySlot[] | undefined, actual: number): string {
+	function reasonFor(
+		av: AvailabilitySlot[] | undefined,
+		actual: number,
+		hasPreferredTrainer: boolean
+	): string {
 		if (!availabilityHasAllowedDay(av)) {
 			return `No availability on ${allowedDaysLabel}. Update their availability or change the distribution.`
 		}
@@ -513,6 +495,9 @@ export async function POST(
 			return trainerIds.length === 0
 				? "No trainers configured for this timetable."
 				: "No rooms configured for this club."
+		}
+		if (hasPreferredTrainer) {
+			return "No free slot with the assigned trainer at times that match participant availability, rooms, and trainer limits. Change the assigned trainer, relax constraints, or expand availability."
 		}
 		return "No free trainer or room matched their available times (capacity reached)."
 	}
@@ -529,7 +514,7 @@ export async function POST(
 				target_id: t.id,
 				desired_lessons_count: t.desired_lessons_count,
 				actual_count: actual,
-				reason: reasonFor(av, actual),
+				reason: reasonFor(av, actual, Boolean(t.preferred_trainer_id)),
 			})
 		}
 	}
@@ -544,8 +529,42 @@ export async function POST(
 				group_lesson_type_id: gt.group_lesson_type_id,
 				desired_lessons_count: gt.desired_lessons_count,
 				actual_count: actual,
-				reason: reasonFor(av, actual),
+				reason: reasonFor(av, actual, Boolean(gt.preferred_trainer_id)),
 			})
+		}
+	}
+
+	if (shortfalls.length > 0) {
+		return NextResponse.json(
+			{
+				error:
+					"Could not schedule every target for this week. Nothing was changed. Adjust availability, rooms, trainer limits, or assigned trainers and try again.",
+				shortfalls,
+				week_start: weekStartMonday,
+			},
+			{ status: 422 }
+		)
+	}
+
+	// Delete non-static lessons only after a full plan exists (no shortfalls).
+	const { data: toDelete, error: listError } = await supabase
+		.from("lessons")
+		.select("id")
+		.eq("timetable_id", timetableId)
+		.eq("is_static", false)
+		.gte("start_at", weekStartTs)
+		.lte("start_at", periodEnd)
+	if (listError) {
+		return NextResponse.json({ error: listError.message }, { status: 500 })
+	}
+	const idsToDelete = (toDelete ?? []).map((r) => r.id)
+	if (idsToDelete.length > 0) {
+		for (let i = 0; i < idsToDelete.length; i += 200) {
+			const chunk = idsToDelete.slice(i, i + 200)
+			const { error: delError } = await supabase.from("lessons").delete().in("id", chunk)
+			if (delError) {
+				return NextResponse.json({ error: delError.message }, { status: 500 })
+			}
 		}
 	}
 

@@ -1,6 +1,8 @@
 /**
  * Greedy timetable solver: assigns individual/couple lessons to time slots
  * for one week based on targets, preferences, trainer limits, and availability.
+ * When a target sets `preferred_trainer_id`, only that trainer may teach those lessons
+ * (no silent fallback to another trainer).
  */
 
 import type { AvailabilitySlot } from "./availability"
@@ -327,8 +329,8 @@ export type LessonRow = {
 const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 }
 
 /**
- * Greedy solver: for each target (by priority), assign desired_lessons_count lessons
- * to the first valid slots (target + trainer available, trainer under limit, room free).
+ * Greedy solver: assign lessons to valid slots (participant + chosen trainer available,
+ * trainer under daily limit, room free). Per-target preferred trainer is exclusive when set.
  */
 function keepOnlyWeekendDays<T extends { date: string }>(slots: T[]): T[] {
 	return slots.filter((s) => {
@@ -666,9 +668,17 @@ export function solveTimetable(input: SolverInput): LessonRow[] {
 		end: string,
 		preferredTrainerId: string | null
 	): { trainerId: string; roomId: string | null } | null {
-		const candidates = preferredTrainerId && trainer_ids.includes(preferredTrainerId)
-			? [preferredTrainerId, ...trainer_ids.filter((id) => id !== preferredTrainerId)]
-			: trainer_ids
+		// When a target names a preferred trainer, that assignment is binding: do not
+		// substitute another trainer (would silently violate the timetable targets).
+		// Null / missing preference means any trainer in `trainer_ids` may teach.
+		// If a preference is set but that trainer is not in this timetable's trainer list,
+		// treat as unsatisfiable (empty candidates) rather than falling back to others.
+		const candidates =
+			preferredTrainerId != null && preferredTrainerId !== ""
+				? trainer_ids.includes(preferredTrainerId)
+					? [preferredTrainerId]
+					: []
+				: trainer_ids
 
 		for (const tid of candidates) {
 			if (!trainerAvailable(tid, date, start, end)) continue

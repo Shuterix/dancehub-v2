@@ -552,6 +552,11 @@ export default function TimetableDetailPage({
 			})
 			const json = await res.json().catch(() => ({}))
 			if (!res.ok) {
+				if (res.status === 422 && Array.isArray(json.shortfalls)) {
+					setShortfalls(json.shortfalls)
+					toast.error(json.error ?? "Could not schedule all targets for this week. Nothing was changed.")
+					return
+				}
 				toast.error(json.error ?? "Generate failed")
 				return
 			}
